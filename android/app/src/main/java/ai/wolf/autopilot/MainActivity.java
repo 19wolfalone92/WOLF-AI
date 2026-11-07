@@ -39,10 +39,10 @@ public final class MainActivity extends Activity {
     private static final int GREEN = Color.rgb(122, 231, 170);
     private static final int ORANGE = Color.rgb(255, 196, 114);
     private static final String[] PROJECT_CODES = {
-            "studio", "shaira", "williams", "williams-ai", "english-child"
+            "wolf", "studio", "shaira", "williams", "williams-ai", "english-child"
     };
     private static final String[] PROJECT_TITLES = {
-            "🎬 STORY GLITCH Studio", "❤️ Shaira — русский язык",
+            "🐺 WOLF AI — самоаудит", "🎬 STORY GLITCH Studio", "❤️ Shaira — русский язык",
             "📈 Williams Bot", "🧠 Williams AI", "📚 Eva English Child"
     };
     private static final String[] MODES = {"audit", "test"};
