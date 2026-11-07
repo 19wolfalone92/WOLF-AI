@@ -1,0 +1,58 @@
+name: WOLF AI — Learn Routing (CPU Only)
+run-name: "WOLF learn task routing — ${{ github.event_name }}"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'wolf_ai/train_router.py'
+      - 'training/tasks.jsonl'
+      - 'tests/test_wolf_training.py'
+      - '.github/workflows/wolf-ai-train.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wolf-train-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  train-intent-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout curated examples and training code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run deterministic training and safety tests
+        run: python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+      - name: Train actual CPU task-router classifier and measure holdout
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-model"
+          python -B -m wolf_ai.train_router --examples training/tasks.jsonl \
+            --output "$RUNNER_TEMP/wolf-model"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          report=json.loads((Path(os.environ['RUNNER_TEMP'])/'wolf-model/training_report.json').read_text())
+          score=report['holdout']['macro_recall']
+          if score < .60: raise SystemExit(f'Classifier below acceptance threshold: {score}')
+          print(f"Trained task router, holdout macro-recall={score}")
+          print("IMPORTANT: This does not train Qwen or grant general reasoning.")
+          PY
+      - name: Attach model and evaluation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolf-trained-task-router-${{ github.run_id }}
+          path: ${{ runner.temp }}/wolf-model/
+          if-no-files-found: warn
+          retention-days: 21
