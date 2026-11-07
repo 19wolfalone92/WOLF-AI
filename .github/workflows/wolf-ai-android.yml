@@ -5,11 +5,15 @@ on:
   pull_request:
     paths:
       - 'android/**'
+      - 'wolf_ai/train_router.py'
+      - 'training/tasks.jsonl'
       - '.github/workflows/wolf-ai-android.yml'
   push:
     branches: [main]
     paths:
       - 'android/**'
+      - 'wolf_ai/train_router.py'
+      - 'training/tasks.jsonl'
       - '.github/workflows/wolf-ai-android.yml'
 
 permissions:
@@ -70,6 +74,19 @@ jobs:
           curl --fail --location --retry 3 \
             https://www.apache.org/licenses/LICENSE-2.0.txt \
             -o android/app/src/main/assets/QWEN_LICENSE.txt
+      - name: Python 3.11 for offline router training
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Train and bundle intent model INSIDE Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B -m unittest discover -s tests -p 'test_wolf_training.py' -v
+          python -B -m wolf_ai.train_router --examples training/tasks.jsonl \
+            --output android/app/src/main/assets
+          test -s android/app/src/main/assets/task_router_model.json
+          test -s android/app/src/main/assets/training_report.json
       - name: Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -90,6 +107,7 @@ jobs:
           test -s "$apk"
           unzip -l "$apk" | grep -F 'assets/qwen2.5-coder-0.5b-instruct-q4_0.gguf'
           unzip -l "$apk" | grep -F 'lib/arm64-v8a/libwolf_native.so'
+          unzip -l "$apk" | grep -F 'assets/task_router_model.json'
           test "$(stat -c%s "$apk")" -gt 400000000
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | grep -F "package: name='ai.wolf.autopilot'"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$apk" | tee /tmp/wolf-permissions.txt
@@ -106,5 +124,6 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android/app/build/outputs/apk/debug/SHA256SUMS.txt
+            android/app/src/main/assets/training_report.json
           if-no-files-found: error
           retention-days: 30
