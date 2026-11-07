@@ -12,7 +12,7 @@ class LocalModelContracts(unittest.TestCase):
         src = (JAVA / "ModelVault.java").read_text(encoding="utf-8")
         self.assertIn('!"content".equals(uri.getScheme())', src)
         self.assertIn("getContentResolver().openInputStream(uri)", src)
-        self.assertIn('new File(context.getFilesDir(), "models")', src)
+        self.assertIn('new File(c.getFilesDir(), "models")', src)
         self.assertIn("MessageDigest.getInstance(\"SHA-256\")", src)
         self.assertIn("partial.renameTo(existing)", src)
         self.assertIn("oldBackup.renameTo(existing)", src)
@@ -48,7 +48,7 @@ class LocalModelContracts(unittest.TestCase):
         self.assertIn("speaker.close()", screen)
         self.assertIn("IMPORT_GGUF", screen)
         self.assertIn("ACTION_OPEN_DOCUMENT", screen)
-        self.assertIn("импортировать GGUF", screen.lower())
+        self.assertIn("импортировать gguf", screen.lower())
 
 
 if __name__ == "__main__":
