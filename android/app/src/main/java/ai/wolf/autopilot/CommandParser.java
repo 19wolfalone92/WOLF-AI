@@ -5,7 +5,7 @@ import java.util.Locale;
 /** Deterministic offline parser: only selects a SAFE diagnostic recipe. */
 public final class CommandParser {
     private static final String[] PROJECTS = {
-            "studio", "shaira", "williams", "williams-ai", "english-child"
+            "wolf", "studio", "shaira", "williams", "williams-ai", "english-child"
     };
     private CommandParser() {}
 
@@ -26,7 +26,11 @@ public final class CommandParser {
         String lower = (text == null ? "" : text).toLowerCase(Locale.ROOT);
         String project = fallbackProject;
         // Priority: explicit repo names before generic words.
-        if (lower.contains("williams-ai") || lower.contains("williams ai") ||
+        if (lower.contains("wolf-ai") || lower.contains("wolf ai") ||
+                lower.contains("вольф аи") || lower.contains("вольф ии") ||
+                lower.contains("самого волка") || lower.contains("наш ии")) {
+            project = "wolf";
+        } else if (lower.contains("williams-ai") || lower.contains("williams ai") ||
                 lower.contains("обучи ии") || lower.contains("ai трейдер")) {
             project = "williams-ai";
         } else if (lower.contains("шайр") || lower.contains("shaira")) {
