@@ -2,6 +2,9 @@ package ai.wolf.autopilot;
 
 import android.content.Context;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
+
+import java.util.Set;
 
 import java.util.Locale;
 
@@ -31,10 +34,6 @@ public final class SpeechCenter {
                     loading = false;
                     ready = status == TextToSpeech.SUCCESS;
                     if (ready && engine != null) {
-                        int availability = engine.setLanguage(new Locale("ru", "RU"));
-                        if (availability == TextToSpeech.LANG_NOT_SUPPORTED ||
-                                availability == TextToSpeech.LANG_MISSING_DATA)
-                            ready = false;
                         engine.setSpeechRate(0.94f);
                     }
                 }
@@ -48,10 +47,39 @@ public final class SpeechCenter {
         if (!ready || engine == null)
             return "В установленном Android TTS нет готового русского голоса. " +
                     "Установи русский голос в системных настройках синтеза речи.";
+        if (!configureVoice(text))
+            return "Язык ответа недоступен в установленном Android TTS. " +
+                    "Установи русский или английский голос в системных настройках.";
         String id = "wolf-" + System.currentTimeMillis();
         int result = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
         return result == TextToSpeech.SUCCESS ? "🔊 Ответ озвучивается." :
                 "Не удалось запустить синтез речи.";
+    }
+
+    private boolean configureVoice(String text) {
+        Locale language = text.matches("(?s).*[\\u0400-\\u04ff].*") ?
+                new Locale("ru", "RU") : Locale.US;
+        int availability = engine.setLanguage(language);
+        if (availability == TextToSpeech.LANG_NOT_SUPPORTED ||
+                availability == TextToSpeech.LANG_MISSING_DATA) return false;
+        // Prefer downloaded, device-local voices. An installed engine can still
+        // have network access; voice selection alone is not a privacy guarantee.
+        try {
+            Set<Voice> voices = engine.getVoices();
+            if (voices != null) {
+                for (Voice voice : voices) {
+                    if (voice != null && voice.getLocale() != null &&
+                            language.getLanguage().equals(voice.getLocale().getLanguage()) &&
+                            !voice.isNetworkConnectionRequired()) {
+                        engine.setVoice(voice);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Some OEM TTS engines cannot enumerate voices.
+        }
+        return true;
     }
 
     public synchronized void stop() {
