@@ -24,6 +24,7 @@ public final class GithubOperations {
     public static final String FREE_TESTS = "provider-tests";
     public static final String REPAIR = "repair";
     public static final String TRAIN = "train";
+    public static final String MISSIONS = "missions";
 
     private GithubOperations() {}
 
@@ -34,12 +35,13 @@ public final class GithubOperations {
             case FREE_TESTS: return "studio-v3-free-tests.yml";
             case REPAIR: return "wolf-ai-repair.yml";
             case TRAIN: return "wolf-ai-train.yml";
+            case MISSIONS: return "wolf-ai-missions.yml";
             default: throw new IllegalArgumentException("Запрещённый тип задания.");
         }
     }
 
     private static HttpURLConnection connect(String kind, String suffix, String method, String token) throws Exception {
-        URL url = new URL(((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind)) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
+        URL url = new URL(((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind)) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
         c.setRequestMethod(method);
         c.setInstanceFollowRedirects(false);
@@ -47,7 +49,7 @@ public final class GithubOperations {
         c.setReadTimeout(16000);
         c.setRequestProperty("Accept", "application/vnd.github+json");
         c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-        c.setRequestProperty("User-Agent", "WolfAI-Android/3.0");
+        c.setRequestProperty("User-Agent", "WolfAI-Android/4.0");
         if (token != null && !token.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + token);
         return c;
     }
@@ -83,6 +85,10 @@ public final class GithubOperations {
                 // Only predefined safe deterministic Ruff fixes. No code instructions in API payload.
                 payload.put("inputs", new JSONObject().put("mode", "repair"));
             }
+            if (MISSIONS.equals(kind)) {
+                // Worker only executes owner-approved SHA-bound Issue comments.
+                payload.put("inputs", new JSONObject().put("mode", "run"));
+            }
             byte[] data = payload.toString().getBytes(StandardCharsets.UTF_8);
             c.setFixedLengthStreamingMode(data.length);
             try (OutputStream out = c.getOutputStream()) { out.write(data); }
@@ -115,7 +121,7 @@ public final class GithubOperations {
                 sb.append("#").append(id).append(" — ")
                         .append(r.optString("status", "?")).append(" / ")
                         .append(conclusion).append("\n")
-                        .append((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind)) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
+                        .append((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind)) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
             }
             sb.append("APK/MP4/отчёты находятся в Artifacts соответствующего запуска.");
             return sb.toString();
