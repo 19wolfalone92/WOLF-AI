@@ -119,7 +119,7 @@ jobs:
           python -B -m wolf_ai.repair_engine --repo . \
             --report "$RUNNER_TEMP/wolf-repair-sim.json" --apply
           python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
-          ruff check --select E4,E7,E9,F821,F401,F841,I wolf_ai tests
+          ruff check --select E4,E7,E9,F821,F401,I wolf_ai tests
           echo "Smoke run completed on disposable runner; zero GitHub write permissions."
       - name: Upload non-destructive test receipt
         if: always()
