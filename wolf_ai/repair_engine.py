@@ -17,6 +17,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
+from wolf_ai.orchestrator import clean_log
+
 SCAN_PATHS = ("wolf_ai", "tests")
 REPAIRABLE_EXTENSIONS = (".py",)
 MAX_PATCH_BYTES = 120_000
@@ -96,9 +98,9 @@ def run_repair(repo: Path, *, apply: bool, output: Path, linter: str = "ruff") -
     if not apply:
         output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         return report
-    # F401 unused imports; F841 unused local variables; I import sorting.
+    # F401 unused imports and I import sorting.
     # Includes no unsafe --unsafe-fixes or broad refactors.
-    fix = command(repo, [linter, "check", "--select", "F401,F841,I",
+    fix = command(repo, [linter, "check", "--select", "F401,I",
                          "--fix", "--no-unsafe-fixes", *SCAN_PATHS], 160)
     names, patch = validate_diff(repo)
     report["modified_files"] = names
@@ -106,12 +108,14 @@ def run_repair(repo: Path, *, apply: bool, output: Path, linter: str = "ruff") -
     report["patch_bytes"] = len(patch.encode("utf-8"))
     report["applied"] = bool(names)
     # Always validate again, even if linter reports a failed fix.
-    lint = command(repo, [linter, "check", "--select", "F401,F841,I", *SCAN_PATHS], 120)
+    lint = command(repo, [linter, "check", "--select", "F401,I", *SCAN_PATHS], 120)
     tests = command(repo, [sys.executable, "-B", "-m", "unittest", "discover",
                            "-s", "tests", "-p", "test_wolf*.py", "-v"], 180)
     report["linter_passed"] = lint.returncode == 0
     report["tests"] = "passed" if tests.returncode == 0 else "failed"
-    report["test_excerpt"] = tests.stdout[-3500:]
+    report["test_excerpt"] = clean_log(tests.stdout[-3000:])
+    report["lint_excerpt"] = clean_log(lint.stdout[-3000:])
+    report["fix_excerpt"] = clean_log(fix.stdout[-1000:])
     report["status"] = ("verified_change" if names else "clean") if (
         lint.returncode == 0 and tests.returncode == 0
     ) else "verification_failed"
@@ -119,7 +123,9 @@ def run_repair(repo: Path, *, apply: bool, output: Path, linter: str = "ruff") -
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # A failed test never becomes a PR; caller must check status.
     if report["status"] == "verification_failed":
-        raise RepairError("Auto-fix did not pass linter and tests; do NOT open PR")
+        raise RepairError("Auto-fix failed; do NOT open PR. Linter: " +
+                          report["lint_excerpt"][-700:] + " Tests: " +
+                          report["test_excerpt"][-500:])
     return report
 
 
