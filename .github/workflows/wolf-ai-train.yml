@@ -2,6 +2,8 @@ name: WOLF AI — Learn Routing (CPU Only)
 run-name: "WOLF learn task routing — ${{ github.event_name }}"
 
 on:
+  schedule:
+    - cron: '20 4 * * 1' # Monday finite CPU evaluation; no paid GPU.
   workflow_dispatch:
   pull_request:
     paths:
