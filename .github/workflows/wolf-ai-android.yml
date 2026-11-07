@@ -117,6 +117,53 @@ jobs:
             exit 2
           fi
           sha256sum "$apk" | tee android/app/build/outputs/apk/debug/SHA256SUMS.txt
+      - name: Restore optional persistent release signing
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        env:
+          WOLF_KEYSTORE_B64: ${{ secrets.WOLF_RELEASE_KEYSTORE_B64 }}
+          WOLF_STORE_PASSWORD: ${{ secrets.WOLF_STORE_PASSWORD }}
+          WOLF_KEY_ALIAS: ${{ secrets.WOLF_KEY_ALIAS }}
+          WOLF_KEY_PASSWORD: ${{ secrets.WOLF_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$WOLF_KEYSTORE_B64" && -n "$WOLF_STORE_PASSWORD" &&
+                -n "$WOLF_KEY_ALIAS" && -n "$WOLF_KEY_PASSWORD" ]]; then
+            printf '%s' "$WOLF_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/wolf-release.jks"
+            chmod 600 "$RUNNER_TEMP/wolf-release.jks"
+            test -s "$RUNNER_TEMP/wolf-release.jks"
+            echo "WOLF_RELEASE_STORE_FILE=$RUNNER_TEMP/wolf-release.jks" >> "$GITHUB_ENV"
+            echo "Persistent signing material configured (no credentials printed)."
+          else
+            echo "::notice::Stable release signing is not configured. Debug APK only."
+          fi
+      - name: Build optional stable signed release APK
+        if: github.ref == 'refs/heads/main' && env.WOLF_RELEASE_STORE_FILE != ''
+        env:
+          WOLF_STORE_PASSWORD: ${{ secrets.WOLF_STORE_PASSWORD }}
+          WOLF_KEY_ALIAS: ${{ secrets.WOLF_KEY_ALIAS }}
+          WOLF_KEY_PASSWORD: ${{ secrets.WOLF_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p android :app:assembleRelease
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify \
+            --verbose --print-certs "$apk" > "$RUNNER_TEMP/wolf-release-verify.txt"
+          grep -F 'Verified using v2 scheme' "$RUNNER_TEMP/wolf-release-verify.txt"
+          sha256sum "$apk" > android/app/build/outputs/apk/release/SHA256SUMS.txt
+      - name: Upload persistent signed release APK (only if configured)
+        if: github.ref == 'refs/heads/main' && env.WOLF_RELEASE_STORE_FILE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: WOLF-AI-Android-signed-release-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload installable debug APK
         uses: actions/upload-artifact@v4
         with:
