@@ -2,6 +2,12 @@ plugins {
     id 'com.android.application'
 }
 
+def persistentStore = System.getenv('WOLF_RELEASE_STORE_FILE')
+def persistentStorePass = System.getenv('WOLF_STORE_PASSWORD')
+def persistentAlias = System.getenv('WOLF_KEY_ALIAS')
+def persistentKeyPass = System.getenv('WOLF_KEY_PASSWORD')
+def hasPersistentSigning = persistentStore && persistentStorePass && persistentAlias && persistentKeyPass
+
 android {
     namespace 'ai.wolf.autopilot'
     compileSdk 35
@@ -11,8 +17,8 @@ android {
         applicationId 'ai.wolf.autopilot'
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName '3.1.0'
+        versionCode 8
+        versionName '4.0.0'
 
         ndk {
             abiFilters 'arm64-v8a'
@@ -41,7 +47,27 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        persistentRelease {
+            if (hasPersistentSigning) {
+                storeFile file(persistentStore)
+                storePassword persistentStorePass
+                keyAlias persistentAlias
+                keyPassword persistentKeyPass
+            }
+        }
+    }
+
     buildTypes {
-        release { minifyEnabled false }
+        debug {
+            // CI debug signing uses Android's ephemeral default keystore.
+            // Never promise this package can upgrade a previous debug install.
+        }
+        release {
+            minifyEnabled false
+            if (hasPersistentSigning) {
+                signingConfig signingConfigs.persistentRelease
+            }
+        }
     }
 }
