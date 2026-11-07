@@ -48,7 +48,7 @@ class LocalModelContracts(unittest.TestCase):
         self.assertIn("speaker.close()", screen)
         self.assertIn("IMPORT_GGUF", screen)
         self.assertIn("ACTION_OPEN_DOCUMENT", screen)
-        self.assertIn("импортировать gguf", screen.lower())
+        self.assertIn("импортировать более мощную gguf-модель", screen.lower())
 
 
 if __name__ == "__main__":
