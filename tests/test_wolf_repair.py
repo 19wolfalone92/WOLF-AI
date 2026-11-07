@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from wolf_ai.repair_engine import RepairError, is_repairable, run_repair, validate_diff
+from wolf_ai.repair_engine import RepairError, is_repairable, run_repair, validate_diff, command as actual_command
 
 
 class RepairEngineTests(unittest.TestCase):
@@ -68,9 +68,9 @@ class RepairEngineTests(unittest.TestCase):
     def test_mocked_safe_autofix_versus_test_fail(self):
         with tempfile.TemporaryDirectory() as td:
             repo = self._repo(Path(td))
-            original = subprocess.run
-
             def fake_command(root, argv, timeout=180):
+                if argv[0] == "git":
+                    return actual_command(root, argv, timeout)
                 if argv[:2] == ["ruff", "check"] and "--fix" in argv:
                     (repo / "wolf_ai" / "module.py").write_text("x = 2\n")
                 return subprocess.CompletedProcess(argv, 0, "OK\n")
