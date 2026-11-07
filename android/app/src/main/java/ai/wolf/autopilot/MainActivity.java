@@ -33,6 +33,7 @@ public final class MainActivity extends Activity {
     private static final int EXPORT_LEARNING = 6140;
     private static final int IMPORT_LEARNING = 6141;
     private static final int IMPORT_GGUF = 6150;
+    private static final int VOICE_INPUT = 6160;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -847,6 +848,27 @@ public final class MainActivity extends Activity {
         });
         questionInput = entry("Вопрос для встроенного ИИ…", true);
         add(llm, questionInput, 13, 8);
+        Button dictate = button("🎙️ Продиктовать вопрос", false);
+        add(llm, dictate, 0, 8);
+        dictate.setOnClickListener(v -> {
+            Intent voice = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,
+                    "Продиктуй сообщение для WOLF AI");
+            try {
+                startActivityForResult(voice, VOICE_INPUT);
+            } catch (Exception error) {
+                aiStatus.setText("Системное распознавание речи недоступно: " +
+                        error.getMessage());
+            }
+        });
+        add(llm, text("Распознавание выполняет установленная служба Android. " +
+                "Некоторые службы передают аудио в интернет. " +
+                "Текст появится в поле вопроса и НЕ будет отправлен ИИ " +
+                "до твоего нажатия «Спросить ИИ офлайн».",
+                12, MUTED, false), 0, 8);
         Button ask = button("🧠 Спросить ИИ офлайн", false);
         add(llm, ask, 0, 9);
         aiOutput = text("Модель уже внутри приложения. Для начала просто задай вопрос.", 13, MUTED, false);
@@ -1315,6 +1337,18 @@ public final class MainActivity extends Activity {
                         }, result -> refreshLearningStatus(result),
                                 error -> refreshLearningStatus("Импорт отклонён: " + error));
                     }).show();
+            return;
+        }
+        if (requestCode == VOICE_INPUT) {
+            if (resultCode == RESULT_OK && data != null) {
+                java.util.ArrayList<String> phrases = data.getStringArrayListExtra(
+                        android.speech.RecognizerIntent.EXTRA_RESULTS);
+                if (phrases != null && !phrases.isEmpty() && phrases.get(0) != null) {
+                    questionInput.setText(phrases.get(0));
+                    aiStatus.setText("🎙️ Голос преобразован в текст. " +
+                            "Проверь его и нажми «Спросить ИИ офлайн».");
+                }
+            }
             return;
         }
         if (requestCode == IMPORT_GGUF) {
