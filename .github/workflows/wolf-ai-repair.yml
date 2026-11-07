@@ -1,0 +1,110 @@
+name: WOLF AI — Safe Self-Repair
+run-name: "WOLF safe Python repair • ${{ inputs.mode || 'inspect' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Safe deterministic checks or automatic PR proposal (never merge)
+        required: true
+        default: inspect
+        type: choice
+        options: [inspect, repair]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: wolf-self-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == '19wolfalone92/WOLF-AI' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout trusted main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned open-source Ruff
+        run: python -m pip install 'ruff==0.14.3'
+      - name: Safety and regression tests BEFORE changes
+        run: python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+      - name: Static Python audit (no writes)
+        run: |
+          ruff check --select E4,E7,E9,F821 wolf_ai tests
+      - name: Create or inspect bounded deterministic repair
+        id: fix
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-repair"
+          if [[ "$MODE" == "repair" ]]; then
+            python -B -m wolf_ai.repair_engine --repo . \
+              --report "$RUNNER_TEMP/wolf-repair/receipt.json" --apply
+            if [[ -n "$(git diff --name-only -- wolf_ai tests)" ]]; then
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            python -B -m wolf_ai.repair_engine --repo . \
+              --report "$RUNNER_TEMP/wolf-repair/receipt.json"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+          git diff -- wolf_ai tests > "$RUNNER_TEMP/wolf-repair/proposed.patch"
+          wc -c "$RUNNER_TEMP/wolf-repair/proposed.patch"
+      - name: Repeat regression tests AFTER modifications
+        if: inputs.mode == 'repair'
+        run: |
+          ruff check --select E4,E7,E9,F821,F401,F841,I wolf_ai tests
+          python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+      - name: Save verified repair receipt and patch even if PR blocked
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolf-safe-repair-${{ github.run_id }}
+          path: ${{ runner.temp }}/wolf-repair/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Open separate PR for human review (never auto-merge)
+        if: inputs.mode == 'repair' && steps.fix.outputs.has_changes == 'true'
+        id: pr
+        continue-on-error: true
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "fix(wolf): verified safe Python lint and import repairs"
+          branch: "wolf/bot-reviewed-python-fixes"
+          delete-branch: false
+          title: "WOLF AI self-repair: tested safe Python fixes"
+          body: |
+            Safe deterministic Python linter auto-fix, not an LLM rewrite.
+            Includes only whitelisted files under wolf_ai/ and tests/.
+            Tests executed before AND after the repair; diff size bounded.
+            No auto-merge, no changes to workflows, Android, Studio or trading.
+            Review the diff and green checks before manual merge.
+            See the WOLF repair artifact for the execution receipt.
+          add-paths: |
+            wolf_ai/*.py
+            tests/test_wolf*.py
+      - name: Report PR permission limitations explicitly
+        if: inputs.mode == 'repair' && steps.fix.outputs.has_changes == 'true'
+        env:
+          OUTCOME: ${{ steps.pr.outcome }}
+        run: |
+          if [[ "$OUTCOME" == "failure" ]]; then
+            echo "::warning::GitHub did not allow automatic PR creation. The verified patch remains in the Actions artifact."
+          fi
