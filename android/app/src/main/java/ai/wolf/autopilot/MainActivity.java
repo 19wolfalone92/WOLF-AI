@@ -32,6 +32,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int EXPORT_LEARNING = 6140;
     private static final int IMPORT_LEARNING = 6141;
+    private static final int IMPORT_GGUF = 6150;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -85,6 +86,8 @@ public final class MainActivity extends Activity {
     private TextView resultBox;
     private TextView aiOutput;
     private TextView aiStatus;
+    private TextView modelStatus;
+    private Spinner answerBudgetSpinner;
     private TextView cloudStatus;
     private TextView backlogStatus;
     private EditText researchQuery;
@@ -752,19 +755,88 @@ public final class MainActivity extends Activity {
             showResult("Локальный GitHub-токен удалён.");
         });
 
-        LinearLayout llm = card(page, "🧠 ВСТРОЕННЫЙ ИИ — без интернета",
-                "Qwen2.5-Coder 0.5B + llama.cpp находятся внутри APK. " +
-                "Не нужен Termux, компьютер, доступ к сервисам или платный API. " +
-                "При первом обращении модель распакуется в память приложения (~430 МБ).");
+        LinearLayout llm = card(page, "🧠 WOLF AI — модель на выбор",
+                "Внутри APK остаётся быстрая Qwen 0.5B. Для более качественного " +
+                "общения можно импортировать самостоятельно скачанный GGUF " +
+                "(Qwen3 1.7B / Qwen3 4B). Всё работает на телефоне, без платного API. " +
+                "Модели 2–3 ГБ расходуют больше RAM и могут быть медленными.");
         aiStatus = text("● Модель в комплекте APK • Android ARM64", 13, GREEN, true);
         add(llm, aiStatus, 11, 7);
-        Button checkAi = button("⚡ Запустить встроенный ИИ", true);
+        modelStatus = text(ModelVault.summary(this), 13, MUTED, false);
+        add(llm, modelStatus, 9, 9);
+        Button importModel = button("🧠 Импортировать более мощную GGUF-модель", true);
+        add(llm, importModel, 0, 8);
+        importModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Установить локальную GGUF-модель")
+                .setMessage("Рекомендуемые варианты:\n\n" +
+                        "Qwen3 1.7B Q4_K_M: файл ~1.28 ГБ, быстрее и экономнее.\n" +
+                        "Qwen3 4B Instruct 2507 Q4_K_M: ~2.5 ГБ, качественнее, но медленнее.\n\n" +
+                        "Скачай .gguf из проверенного репозитория Hugging Face. " +
+                        "Выбери его в файлах Android. Копия останется в памяти телефона. " +
+                        "Существующая модель сохраняется до успешного завершения импорта.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Выбрать файл", (dialog, button) -> {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    pick.setType("*/*");
+                    pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(pick, IMPORT_GGUF);
+                }).show());
+        Button suggestions = button("🌐 Найти Qwen3 1.7B / 4B на Hugging Face", false);
+        add(llm, suggestions, 0, 8);
+        suggestions.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Проверенные GGUF-модели")
+                .setItems(new String[]{
+                        "Qwen3 1.7B — Q4_K_M (~1.28 ГБ)",
+                        "Qwen3 4B Instruct 2507 — Q4_K_M (~2.5 ГБ)"
+                }, (dialog, position) -> {
+                    String address = position == 0 ?
+                            "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/tree/main" :
+                            "https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/tree/main";
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(address)));
+                }).show());
+        Button clearImported = button("🗑 Вернуться к встроенной модели 0.5B", false);
+        add(llm, clearImported, 0, 8);
+        clearImported.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Удалить скачанную GGUF-модель?")
+                .setMessage("Импортированная модель будет удалена из хранилища WOLF. " +
+                        "История сообщений и явно сохранённые факты останутся. " +
+                        "Встроенная модель 0.5B всегда доступна.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить модель", (dialog, button) -> {
+                    modelStatus.setText("Отключаю и удаляю импортированный GGUF…");
+                    async(() -> ModelVault.reset(getApplicationContext()), text -> {
+                        modelStatus.setText(text + "\n" + ModelVault.summary(this));
+                    }, err -> modelStatus.setText("Ошибка удаления: " + err));
+                }).show());
+        add(llm, text("Глубина ответа", 13, MUTED, true), 6, 5);
+        answerBudgetSpinner = spinner(new String[]{
+                "Быстро — до 256 токенов",
+                "Подробно — до 512 токенов",
+                "Развёрнуто — до 768 токенов"
+        });
+        int savedBudget = getSharedPreferences("wolf_offline_ai", MODE_PRIVATE)
+                .getInt("answer_budget", 512);
+        answerBudgetSpinner.setSelection(savedBudget >= 768 ? 2 : savedBudget >= 512 ? 1 : 0);
+        add(llm, answerBudgetSpinner, 0, 9);
+        Button applyBudget = button("Применить глубину ответов", false);
+        add(llm, applyBudget, 0, 8);
+        applyBudget.setOnClickListener(v -> {
+            int budget = answerBudgetSpinner.getSelectedItemPosition() == 2 ? 768 :
+                    answerBudgetSpinner.getSelectedItemPosition() == 1 ? 512 : 256;
+            getSharedPreferences("wolf_offline_ai", MODE_PRIVATE)
+                    .edit().putInt("answer_budget", budget).apply();
+            aiStatus.setText("Глубина ответа: до " + budget +
+                    " токенов. Более длинные ответы будут медленнее.");
+        });
+        Button checkAi = button("⚡ Проверить выбранную модель ИИ", true);
         add(llm, checkAi, 0, 8);
         checkAi.setOnClickListener(v -> {
             aiStatus.setText("Проверяю SHA256 и загружаю локальную модель…");
             async(() -> EmbeddedAi.check(getApplicationContext()), value -> {
                 aiStatus.setTextColor(GREEN);
                 aiStatus.setText("● " + value);
+                modelStatus.setText(ModelVault.summary(this));
             }, error -> {
                 aiStatus.setTextColor(ORANGE);
                 aiStatus.setText("○ Ошибка модели: " + error);
@@ -779,7 +851,7 @@ public final class MainActivity extends Activity {
         ask.setOnClickListener(v -> {
             String question = questionInput.getText().toString().trim();
             aiOutput.setText("Думаю на процессоре телефона…");
-            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(4),
+            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(8),
                     learning.related(question, 3)), answer -> {
                 chat.add("user", question);
                 chat.add("assistant", answer);
@@ -799,7 +871,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 4.0 • Автономные миссии • Metricool • Локальный ИИ", 12, MUTED, false);
+        TextView footer = text("WOLF AI 5.0 • GGUF-модели • Миссии • Metricool", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1220,6 +1292,34 @@ public final class MainActivity extends Activity {
                             return "Локальные знания восстановлены.";
                         }, result -> refreshLearningStatus(result),
                                 error -> refreshLearningStatus("Импорт отклонён: " + error));
+                    }).show();
+            return;
+        }
+        if (requestCode == IMPORT_GGUF) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            Uri source = data.getData();
+            String picked;
+            try { picked = ModelVault.selectedName(this, source); }
+            catch (Exception error) {
+                modelStatus.setText("Неверный файл модели: " + error.getMessage());
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Импортировать " + picked + "?")
+                    .setMessage("WOLF скопирует GGUF в приватную память и посчитает SHA-256. " +
+                            "Это может занять время и расходовать несколько ГБ. " +
+                            "Модель будет запускаться на CPU телефона; " +
+                            "поддержка конкретного GGUF не гарантирована.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Импортировать", (dialog, button) -> {
+                        modelStatus.setText("Копирую и проверяю модель: " + picked + "…");
+                        async(() -> ModelVault.importFile(getApplicationContext(), source),
+                                value -> {
+                                    modelStatus.setText(value);
+                                    aiStatus.setText("GGUF импортирован. Нажми «Проверить модель».");
+                                },
+                                error -> modelStatus.setText("Импорт не выполнен: " + error +
+                                        "\nРанее установленная модель не должна пострадать."));
                     }).show();
             return;
         }
