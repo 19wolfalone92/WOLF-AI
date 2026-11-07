@@ -1,5 +1,5 @@
 name: WOLF AI — free-first project audit
-run-name: "WOLF ${{ inputs.project || 'studio' }} ${{ inputs.mode || 'audit' }} ${{ inputs.client_task_id || 'periodic' }}"
+run-name: "WOLF ${{ github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'wolf' || inputs.project || 'studio' }} ${{ github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'test' || inputs.mode || 'audit' }} ${{ inputs.client_task_id || 'periodic' }}"
 
 on:
   workflow_dispatch:
@@ -22,7 +22,8 @@ on:
         required: true
         default: audit
   schedule:
-    - cron: '30 6 * * 1' # Weekly studio-only audit. Not unlimited compute.
+    - cron: '30 6 * * 1' # Weekly Studio audit.
+    - cron: '15 3 * * *' # Daily self-health check of WOLF AI (read-only).
   pull_request:
     paths:
       - 'wolf_ai/**'
@@ -42,8 +43,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     env:
-      PROJECT: ${{ github.event_name == 'workflow_dispatch' && inputs.project || 'studio' }}
-      MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'audit' }}
+      PROJECT: ${{ github.event_name == 'workflow_dispatch' && inputs.project || (github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'wolf' || 'studio') }}
+      MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'test' || 'audit') }}
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@v4
