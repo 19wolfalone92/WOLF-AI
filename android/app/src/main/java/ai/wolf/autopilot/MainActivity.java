@@ -577,10 +577,10 @@ public final class MainActivity extends Activity {
         add(metricool, connectMetricool, 0, 8);
         connectMetricool.setOnClickListener(v -> {
             metricoolStatus.setText("Регистрирую публичный OAuth клиент…");
-            async(() -> metricoolAuth.beginAuthorization(), intent -> {
+            async(() -> metricoolAuth.beginAuthorization().getData().toString(), url -> {
                 try {
                     metricoolStatus.setText("Открываю страницу входа Metricool…");
-                    startActivity(intent);
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
                 } catch (Exception ex) {
                     metricoolStatus.setText("Не удалось открыть OAuth: " + ex.getMessage());
                 }
