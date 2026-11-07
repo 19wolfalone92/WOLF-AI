@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private TaskStore tasks;
     private ChatStore chat;
     private LearningStore learning;
+    private TrainedRouter trainedRouter;
     private PublicationCenter.VideoInfo selectedVideo;
     private Spinner publicationSpinner;
     private EditText publicationCaption;
@@ -84,6 +85,8 @@ public final class MainActivity extends Activity {
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
         learning = new LearningStore(this);
+        try { trainedRouter = TrainedRouter.load(getApplicationContext()); }
+        catch (Exception ignored) { trainedRouter = null; }
         buildUi();
         updateTokenStatus();
         renderTasks();
@@ -505,7 +508,9 @@ public final class MainActivity extends Activity {
                     learning.clear();
                     refreshLearningStatus("Локальные знания очищены.");
                 }).show());
-        refreshLearningStatus("Локальное обучение готово.");
+        refreshLearningStatus(trainedRouter == null ?
+                "Локальное обучение готово (обученная модель не найдена)." :
+                "Локальное обучение готово. CPU-маршрутизатор встроен в APK.");
 
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
                 "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
@@ -590,9 +595,16 @@ public final class MainActivity extends Activity {
     }
 
     private CommandParser.Route smartRoute(String body) {
-        String example = learning.learnedProject(body);
-        return CommandParser.parse(body,
-                example == null ? selectedProject() : example, selectedMode());
+        String taught = learning.learnedProject(body);
+        String modelGuess = null;
+        if (trainedRouter != null && "wolf".equals(selectedProject())) {
+            try { modelGuess = trainedRouter.predict(body); }
+            catch (Exception ignored) { modelGuess = null; }
+        }
+        // Explicitly taught examples > packaged CPU model > the selected fallback.
+        String fallback = taught != null ? taught :
+                (modelGuess != null ? modelGuess : selectedProject());
+        return CommandParser.parse(body, fallback, selectedMode());
     }
 
     private String selectedProject() {
