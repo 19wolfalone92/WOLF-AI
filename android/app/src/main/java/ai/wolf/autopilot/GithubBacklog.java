@@ -19,6 +19,17 @@ import java.util.List;
 public final class GithubBacklog {
     private static final String API =
             "https://api.github.com/repos/19wolfalone92/WOLF-AI";
+    public static final class IssueReceipt {
+        public final long number;
+        public final String message;
+        IssueReceipt(long number) {
+            this.number = number;
+            this.message = "Задача опубликована в GitHub Issues #" + number +
+                    ".\nhttps://github.com/19wolfalone92/WOLF-AI/issues/" + number +
+                    "\nОна поставлена в список, но НЕ выполнена.";
+        }
+    }
+
     private GithubBacklog() {}
 
     private static HttpURLConnection connect(String suffix, String method, String token) throws Exception {
@@ -57,7 +68,7 @@ public final class GithubBacklog {
         return text.matches("(?is).*(?:github_pat_|ghp_[A-Za-z0-9]|sk-[A-Za-z0-9]{12}|AKIA[A-Z0-9]{12}|password\\s*[:=]|bearer\\s+[A-Za-z0-9]).*");
     }
 
-    public static String create(String text, String project, String mode,
+    public static IssueReceipt create(String text, String project, String mode,
                                 String uid, String token) throws Exception {
         if (token == null || token.isEmpty())
             throw new IllegalStateException("Нужен GitHub PAT с разрешением Issues: Read and write на WOLF-AI.");
@@ -93,9 +104,7 @@ public final class GithubBacklog {
                     "Issue не создан: GitHub HTTP " + code + ". Проверь права Issues.");
             JSONObject issue = new JSONObject(response);
             long number = issue.getLong("number");
-            return "Задача опубликована в GitHub Issues #" + number + ".\n" +
-                    "https://github.com/19wolfalone92/WOLF-AI/issues/" + number +
-                    "\nОна поставлена в список, но НЕ выполнена.";
+            return new IssueReceipt(number);
         } finally {
             c.disconnect();
         }
