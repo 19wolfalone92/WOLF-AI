@@ -26,8 +26,9 @@ on:
   pull_request:
     paths:
       - 'wolf_ai/**'
-      - 'tests/test_wolf_ai.py'
+      - 'tests/test_wolf*.py'
       - '.github/workflows/wolf-ai-audit.yml'
+      - '.github/workflows/wolf-ai-repair.yml'
 
 permissions:
   contents: read
