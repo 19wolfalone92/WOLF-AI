@@ -1,5 +1,5 @@
 name: WOLF AI — free-first project audit
-run-name: "WOLF ${{ inputs.project || 'studio' }} ${{ inputs.mode || 'audit' }} ${{ inputs.client_task_id || 'periodic' }}"
+run-name: "WOLF ${{ github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'wolf' || inputs.project || 'studio' }} ${{ github.event_name == 'schedule' && github.event.schedule == '15 3 * * *' && 'test' || inputs.mode || 'audit' }} ${{ inputs.client_task_id || 'periodic' }}"
 
 on:
   workflow_dispatch:
