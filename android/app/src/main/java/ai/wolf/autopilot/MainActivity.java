@@ -32,6 +32,8 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private static final int EXPORT_LEARNING = 6140;
     private static final int IMPORT_LEARNING = 6141;
+    private static final int IMPORT_GGUF = 6150;
+    private static final int VOICE_INPUT = 6160;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -85,6 +87,10 @@ public final class MainActivity extends Activity {
     private TextView resultBox;
     private TextView aiOutput;
     private TextView aiStatus;
+    private TextView modelStatus;
+    private SpeechCenter speaker;
+    private String lastAiAnswer;
+    private Spinner answerBudgetSpinner;
     private TextView cloudStatus;
     private TextView backlogStatus;
     private EditText researchQuery;
@@ -100,6 +106,7 @@ public final class MainActivity extends Activity {
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
         learning = new LearningStore(this);
+        speaker = new SpeechCenter(this);
         metricoolAuth = new MetricoolOAuth(this);
         metricoolMcp = new MetricoolMcp(this, metricoolAuth);
         try { trainedRouter = TrainedRouter.load(getApplicationContext()); }
@@ -752,19 +759,88 @@ public final class MainActivity extends Activity {
             showResult("Локальный GitHub-токен удалён.");
         });
 
-        LinearLayout llm = card(page, "🧠 ВСТРОЕННЫЙ ИИ — без интернета",
-                "Qwen2.5-Coder 0.5B + llama.cpp находятся внутри APK. " +
-                "Не нужен Termux, компьютер, доступ к сервисам или платный API. " +
-                "При первом обращении модель распакуется в память приложения (~430 МБ).");
+        LinearLayout llm = card(page, "🧠 WOLF AI — модель на выбор",
+                "Внутри APK остаётся быстрая Qwen 0.5B. Для более качественного " +
+                "общения можно импортировать самостоятельно скачанный GGUF " +
+                "(Qwen3 1.7B / Qwen3 4B). Всё работает на телефоне, без платного API. " +
+                "Модели 2–3 ГБ расходуют больше RAM и могут быть медленными.");
         aiStatus = text("● Модель в комплекте APK • Android ARM64", 13, GREEN, true);
         add(llm, aiStatus, 11, 7);
-        Button checkAi = button("⚡ Запустить встроенный ИИ", true);
+        modelStatus = text(ModelVault.summary(this), 13, MUTED, false);
+        add(llm, modelStatus, 9, 9);
+        Button importModel = button("🧠 Импортировать более мощную GGUF-модель", true);
+        add(llm, importModel, 0, 8);
+        importModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Установить локальную GGUF-модель")
+                .setMessage("Рекомендуемые варианты:\n\n" +
+                        "Qwen3 1.7B Q4_K_M: файл ~1.28 ГБ, быстрее и экономнее.\n" +
+                        "Qwen3 4B Instruct 2507 Q4_K_M: ~2.5 ГБ, качественнее, но медленнее.\n\n" +
+                        "Скачай .gguf из проверенного репозитория Hugging Face. " +
+                        "Выбери его в файлах Android. Копия останется в памяти телефона. " +
+                        "Существующая модель сохраняется до успешного завершения импорта.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Выбрать файл", (dialog, button) -> {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    pick.addCategory(Intent.CATEGORY_OPENABLE);
+                    pick.setType("*/*");
+                    pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(pick, IMPORT_GGUF);
+                }).show());
+        Button suggestions = button("🌐 Найти Qwen3 1.7B / 4B на Hugging Face", false);
+        add(llm, suggestions, 0, 8);
+        suggestions.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Проверенные GGUF-модели")
+                .setItems(new String[]{
+                        "Qwen3 1.7B — Q4_K_M (~1.28 ГБ)",
+                        "Qwen3 4B Instruct 2507 — Q4_K_M (~2.5 ГБ)"
+                }, (dialog, position) -> {
+                    String address = position == 0 ?
+                            "https://huggingface.co/bartowski/Qwen_Qwen3-1.7B-GGUF/tree/main" :
+                            "https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/tree/main";
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(address)));
+                }).show());
+        Button clearImported = button("🗑 Вернуться к встроенной модели 0.5B", false);
+        add(llm, clearImported, 0, 8);
+        clearImported.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Удалить скачанную GGUF-модель?")
+                .setMessage("Импортированная модель будет удалена из хранилища WOLF. " +
+                        "История сообщений и явно сохранённые факты останутся. " +
+                        "Встроенная модель 0.5B всегда доступна.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Удалить модель", (dialog, button) -> {
+                    modelStatus.setText("Отключаю и удаляю импортированный GGUF…");
+                    async(() -> ModelVault.reset(getApplicationContext()), text -> {
+                        modelStatus.setText(text + "\n" + ModelVault.summary(this));
+                    }, err -> modelStatus.setText("Ошибка удаления: " + err));
+                }).show());
+        add(llm, text("Глубина ответа", 13, MUTED, true), 6, 5);
+        answerBudgetSpinner = spinner(new String[]{
+                "Быстро — до 256 токенов",
+                "Подробно — до 512 токенов",
+                "Развёрнуто — до 768 токенов"
+        });
+        int savedBudget = getSharedPreferences("wolf_offline_ai", MODE_PRIVATE)
+                .getInt("answer_budget", 512);
+        answerBudgetSpinner.setSelection(savedBudget >= 768 ? 2 : savedBudget >= 512 ? 1 : 0);
+        add(llm, answerBudgetSpinner, 0, 9);
+        Button applyBudget = button("Применить глубину ответов", false);
+        add(llm, applyBudget, 0, 8);
+        applyBudget.setOnClickListener(v -> {
+            int budget = answerBudgetSpinner.getSelectedItemPosition() == 2 ? 768 :
+                    answerBudgetSpinner.getSelectedItemPosition() == 1 ? 512 : 256;
+            getSharedPreferences("wolf_offline_ai", MODE_PRIVATE)
+                    .edit().putInt("answer_budget", budget).apply();
+            aiStatus.setText("Глубина ответа: до " + budget +
+                    " токенов. Более длинные ответы будут медленнее.");
+        });
+        Button checkAi = button("⚡ Проверить выбранную модель ИИ", true);
         add(llm, checkAi, 0, 8);
         checkAi.setOnClickListener(v -> {
             aiStatus.setText("Проверяю SHA256 и загружаю локальную модель…");
             async(() -> EmbeddedAi.check(getApplicationContext()), value -> {
                 aiStatus.setTextColor(GREEN);
                 aiStatus.setText("● " + value);
+                modelStatus.setText(ModelVault.summary(this));
             }, error -> {
                 aiStatus.setTextColor(ORANGE);
                 aiStatus.setText("○ Ошибка модели: " + error);
@@ -772,6 +848,27 @@ public final class MainActivity extends Activity {
         });
         questionInput = entry("Вопрос для встроенного ИИ…", true);
         add(llm, questionInput, 13, 8);
+        Button dictate = button("🎙️ Продиктовать вопрос", false);
+        add(llm, dictate, 0, 8);
+        dictate.setOnClickListener(v -> {
+            Intent voice = new Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
+            voice.putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT,
+                    "Продиктуй сообщение для WOLF AI");
+            try {
+                startActivityForResult(voice, VOICE_INPUT);
+            } catch (Exception error) {
+                aiStatus.setText("Системное распознавание речи недоступно: " +
+                        error.getMessage());
+            }
+        });
+        add(llm, text("Распознавание выполняет установленная служба Android. " +
+                "Некоторые службы передают аудио в интернет. " +
+                "Текст появится в поле вопроса и НЕ будет отправлен ИИ " +
+                "до твоего нажатия «Спросить ИИ офлайн».",
+                12, MUTED, false), 0, 8);
         Button ask = button("🧠 Спросить ИИ офлайн", false);
         add(llm, ask, 0, 9);
         aiOutput = text("Модель уже внутри приложения. Для начала просто задай вопрос.", 13, MUTED, false);
@@ -779,14 +876,31 @@ public final class MainActivity extends Activity {
         ask.setOnClickListener(v -> {
             String question = questionInput.getText().toString().trim();
             aiOutput.setText("Думаю на процессоре телефона…");
-            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(4),
+            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(8),
                     learning.related(question, 3)), answer -> {
                 chat.add("user", question);
                 chat.add("assistant", answer);
                 aiOutput.setText(answer);
+                lastAiAnswer = answer;
                 questionInput.setText("");
             }, error -> aiOutput.setText("Не удалось запустить встроенный ИИ: " + error));
         });
+        Button sayAnswer = button("🔊 Озвучить последний ответ", false);
+        add(llm, sayAnswer, 0, 7);
+        sayAnswer.setOnClickListener(v -> {
+            String state = speaker.speak(lastAiAnswer);
+            aiStatus.setText(state);
+        });
+        Button stopSpeaking = button("⏹ Остановить озвучку", false);
+        add(llm, stopSpeaking, 0, 8);
+        stopSpeaking.setOnClickListener(v -> {
+            speaker.stop();
+            aiStatus.setText("Озвучка остановлена.");
+        });
+        add(llm, text("Озвучка использует установленный Android TTS. " +
+                "Некоторые голосовые движки обращаются к интернету; " +
+                "для приватности выбери загруженный офлайн-голос в Android.",
+                12, MUTED, false), 5, 8);
         Button clearChat = button("Очистить память локального чата", false);
         add(llm, clearChat, 8, 0);
         clearChat.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
@@ -795,11 +909,13 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, button) -> {
                     chat.clearHistory();
+                    lastAiAnswer = null;
+                    speaker.stop();
                     aiOutput.setText("Локальная история очищена.");
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 4.0 • Автономные миссии • Metricool • Локальный ИИ", 12, MUTED, false);
+        TextView footer = text("WOLF AI 5.0 • GGUF-модели • Миссии • Metricool", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1223,6 +1339,46 @@ public final class MainActivity extends Activity {
                     }).show();
             return;
         }
+        if (requestCode == VOICE_INPUT) {
+            if (resultCode == RESULT_OK && data != null) {
+                java.util.ArrayList<String> phrases = data.getStringArrayListExtra(
+                        android.speech.RecognizerIntent.EXTRA_RESULTS);
+                if (phrases != null && !phrases.isEmpty() && phrases.get(0) != null) {
+                    questionInput.setText(phrases.get(0));
+                    aiStatus.setText("🎙️ Голос преобразован в текст. " +
+                            "Проверь его и нажми «Спросить ИИ офлайн».");
+                }
+            }
+            return;
+        }
+        if (requestCode == IMPORT_GGUF) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            Uri source = data.getData();
+            String picked;
+            try { picked = ModelVault.selectedName(this, source); }
+            catch (Exception error) {
+                modelStatus.setText("Неверный файл модели: " + error.getMessage());
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Импортировать " + picked + "?")
+                    .setMessage("WOLF скопирует GGUF в приватную память и посчитает SHA-256. " +
+                            "Это может занять время и расходовать несколько ГБ. " +
+                            "Модель будет запускаться на CPU телефона; " +
+                            "поддержка конкретного GGUF не гарантирована.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Импортировать", (dialog, button) -> {
+                        modelStatus.setText("Копирую и проверяю модель: " + picked + "…");
+                        async(() -> ModelVault.importFile(getApplicationContext(), source),
+                                value -> {
+                                    modelStatus.setText(value);
+                                    aiStatus.setText("GGUF импортирован. Нажми «Проверить модель».");
+                                },
+                                error -> modelStatus.setText("Импорт не выполнен: " + error +
+                                        "\nРанее установленная модель не должна пострадать."));
+                    }).show();
+            return;
+        }
         if (requestCode != PublicationCenter.PICK_VIDEO) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
             publicationStatus.setText("Выбор видео отменён."); return;
@@ -1310,6 +1466,7 @@ public final class MainActivity extends Activity {
         tasks.close();
         chat.close();
         learning.close();
+        if (speaker != null) speaker.close();
         super.onDestroy();
     }
 }

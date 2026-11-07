@@ -21,7 +21,7 @@ public final class EmbeddedAi {
             "9739055e046d62a937e5b7879012209ef40ebea8a1569a96028de491f3f091d5";
     private static final long EXPECTED_BYTES = 428_000_000L;
     private static final Object LOCK = new Object();
-    private static boolean loaded = false;
+    private static String loadedPath = null;
 
     static {
         System.loadLibrary("wolf_native");
@@ -85,13 +85,21 @@ public final class EmbeddedAi {
 
     public static String check(Context context) throws Exception {
         synchronized (LOCK) {
-            File source = model(context.getApplicationContext());
-            if (!loaded) {
-                String result = nativeLoad(source.getAbsolutePath());
+            Context app = context.getApplicationContext();
+            File imported = ModelVault.active(app);
+            File source = imported == null ? model(app) : imported;
+            String path = source.getAbsolutePath();
+            if (!path.equals(loadedPath)) {
+                // Prevent an old mmap from surviving a model switch.
+                if (loadedPath != null) nativeUnload();
+                loadedPath = null;
+                String result = nativeLoad(path);
                 if (result.startsWith("Ошибка")) throw new IllegalStateException(result);
-                loaded = true;
+                loadedPath = path;
             }
-            return "Встроенная Qwen2.5-Coder 0.5B: готова без интернета, Termux и API.";
+            return (imported != null ? ModelVault.name(app) :
+                    "Qwen2.5-Coder 0.5B (встроенная)") +
+                    ": загружена на устройстве без облачного API.";
         }
     }
 
@@ -104,14 +112,20 @@ public final class EmbeddedAi {
     public static String ask(Context context, String question,
                              List<ChatStore.Message> history,
                              List<LearningStore.Fact> facts) throws Exception {
-        if (question == null || question.trim().length() < 3 || question.length() > 1000)
-            throw new IllegalArgumentException("Длина вопроса должна быть 3–1000 символов.");
+        if (question == null || question.trim().length() < 3 || question.length() > 2500)
+            throw new IllegalArgumentException("Длина вопроса должна быть 3–2500 символов.");
         check(context);
         StringBuilder prompt = new StringBuilder();
         prompt.append("<|im_start|>system\n")
-              .append("Ты WOLF AI, локальный помощник. Кратко отвечай по-русски. ")
-              .append("У тебя нет доступа к GitHub, файлам или приложениям. ")
-              .append("Не утверждай, что выполнял действия. Не проси ключи и пароли.")
+              .append("Ты WOLF AI — интеллектуальный персональный ассистент с локальной ")
+              .append("моделью. Общайся на языке пользователя, обычно по-русски. ")
+              .append("Объясняй точно, ясно и по делу; решай задачи по шагам. ")
+              .append("Не выдумывай факты, источники, время, результаты запусков и ")
+              .append("возможности. При нехватке знаний скажи об этом. ")
+              .append("Отличай идеи от выполненных действий. Сам текст ответа не ")
+              .append("запускает Github Actions и не публикует видео: действия ")
+              .append("выполняются только отдельными инструментами приложения после ")
+              .append("подтверждения пользователя. Не запрашивай пароли и токены.")
               .append("<|im_end|>\n");
         if (facts != null && !facts.isEmpty()) {
             prompt.append("<|im_start|>system\n")
@@ -128,12 +142,12 @@ public final class EmbeddedAi {
             prompt.append("<|im_end|>\n");
         }
         if (history != null) {
-            int start = Math.max(0, history.size() - 4);
+            int start = Math.max(0, history.size() - 8);
             for (int i = start; i < history.size(); i++) {
                 ChatStore.Message item = history.get(i);
                 if (!("user".equals(item.role) || "assistant".equals(item.role))) continue;
                 String text = item.text;
-                if (text.length() > 250) text = text.substring(0, 250);
+                if (text.length() > 350) text = text.substring(0, 350);
                 text = text.replace("<|im_start|>", "").replace("<|im_end|>", "");
                 prompt.append("<|im_start|>").append(item.role).append("\n")
                       .append(text).append("<|im_end|>\n");
@@ -142,12 +156,33 @@ public final class EmbeddedAi {
         prompt.append("<|im_start|>user\n")
               .append(question.trim().replace("<|im_start|>", "").replace("<|im_end|>", ""))
               .append("<|im_end|>\n<|im_start|>assistant\n");
-        return nativeGenerate(prompt.toString(), 200);
+        int budget = context.getApplicationContext()
+                .getSharedPreferences("wolf_offline_ai", Context.MODE_PRIVATE)
+                .getInt("answer_budget", 384);
+        budget = budget >= 768 ? 768 : budget >= 512 ? 512 : 256;
+        // Hybrid Qwen3 1.7B may exhaust its answer budget on reasoning.
+        // /no_think belongs inside the final USER message, not the assistant header.
+        String body = prompt.toString();
+        if (ModelVault.active(context) != null &&
+                ModelVault.name(context).toLowerCase(java.util.Locale.ROOT).contains("qwen3-1.7b")) {
+            String boundary = "<|im_end|>\n<|im_start|>assistant\n";
+            int boundaryPos = body.lastIndexOf(boundary);
+            if (boundaryPos >= 0)
+                body = body.substring(0, boundaryPos) +
+                        "\n/no_think" + body.substring(boundaryPos);
+        }
+        synchronized (LOCK) {
+            check(context);
+            String output = nativeGenerate(body, budget);
+            if (output.startsWith("Ошибка локального ИИ:"))
+                throw new IllegalStateException(output);
+            return output;
+        }
     }
 
     public static void unload() {
         synchronized (LOCK) {
-            if (loaded) { nativeUnload(); loaded = false; }
+            if (loadedPath != null) { nativeUnload(); loadedPath = null; }
         }
     }
 }
