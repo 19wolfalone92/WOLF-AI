@@ -160,13 +160,16 @@ public final class EmbeddedAi {
                 .getSharedPreferences("wolf_offline_ai", Context.MODE_PRIVATE)
                 .getInt("answer_budget", 384);
         budget = budget >= 768 ? 768 : budget >= 512 ? 512 : 256;
-        // Qwen3 thinking models may consume all tokens in hidden reasoning;
-        // /no_think is an official soft-switch for hybrid Qwen3 families.
+        // Hybrid Qwen3 1.7B may exhaust its answer budget on reasoning.
+        // /no_think belongs inside the final USER message, not the assistant header.
         String body = prompt.toString();
         if (ModelVault.active(context) != null &&
                 ModelVault.name(context).toLowerCase(java.util.Locale.ROOT).contains("qwen3-1.7b")) {
-            body = body.replace("<|im_start|>assistant\n",
-                    "<|im_start|>assistant\n/no_think\n");
+            String boundary = "<|im_end|>\n<|im_start|>assistant\n";
+            int boundaryPos = body.lastIndexOf(boundary);
+            if (boundaryPos >= 0)
+                body = body.substring(0, boundaryPos) +
+                        "\n/no_think" + body.substring(boundaryPos);
         }
         synchronized (LOCK) {
             check(context);
