@@ -337,7 +337,21 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Запустить", (dialog, button) ->
                         runTrustedWorkflow(GithubOperations.TRAIN))
                 .show());
-        Button checkCloud = button("↻ Проверить 5 процессов GitHub", false);
+        Button queuePulse = button("⚡ Запустить обработчик одобренных миссий", true);
+        add(cloud, queuePulse, 0, 8);
+        queuePulse.setOnClickListener(v ->
+                new android.app.AlertDialog.Builder(this)
+                .setTitle("Запустить обработчик GitHub Issues?")
+                .setMessage("WOLF проверит только твои публичные задачи с отдельным " +
+                        "SHA-подписанным комментарием согласования. " +
+                        "До 3 проверок/тестов за запуск. Никаких изменений кода, " +
+                        "торговли или публикации роликов. " +
+                        "Результат появится в GitHub Actions и Issues.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Запустить", (dialog, button) ->
+                        runTrustedWorkflow(GithubOperations.MISSIONS))
+                .show());
+        Button checkCloud = button("↻ Проверить 6 процессов GitHub", false);
         add(cloud, checkCloud, 0, 7);
         checkCloud.setOnClickListener(v -> refreshTrustedWorkflows());
         backlogStatus = text("Очередь задач GitHub и Pull Requests пока не загружена.", 13, MUTED, false);
@@ -637,7 +651,8 @@ public final class MainActivity extends Activity {
 
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
                 "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
-                "Для публикации задач нужны Issues: Read and write на WOLF-AI. " +
+                "Для публикации задач и согласования автономных миссий " +
+                "нужны Issues: Read and write на WOLF-AI. " +
                 "Для редактора кода нужны Contents и Pull requests: Read and write на WOLF-AI. " +
                 "Сохраняется зашифрованно через Android Keystore, не загружается в репозиторий.");
         connectionState = text("Статус токена", 13, MUTED, true);
@@ -712,7 +727,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 3.1 • Metricool MCP OAuth • Обучение", 12, MUTED, false);
+        TextView footer = text("WOLF AI 4.0 • Автономные миссии • Metricool • Локальный ИИ", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -841,7 +856,7 @@ public final class MainActivity extends Activity {
             StringBuilder out = new StringBuilder();
             for (String kind : new String[]{
                     GithubOperations.APK, GithubOperations.REPAIR, GithubOperations.TRAIN,
-                    GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
+                    GithubOperations.MISSIONS, GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
                 try {
                     out.append(GithubOperations.report(kind, secrets.load())).append("\n\n");
                 } catch (Exception error) {
@@ -937,6 +952,57 @@ public final class MainActivity extends Activity {
                         renderTasks();
                     }, error -> showResult("Issue не создан: " + error));
                 }).show();
+    }
+
+    private void approveMission(TaskStore.Task task) {
+        if (task.issueNumber < 1) {
+            showResult("Сначала опубликуй задание в GitHub Issues.");
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Разрешить одну автономную миссию?")
+                .setMessage("ПРОЕКТ: " + task.project + "\nРЕЖИМ: " + task.mode +
+                        "\nЗАДАНИЕ: " + task.text + "\n\n" +
+                        "WOLF AI запишет твой отдельный проверяемый комментарий " +
+                        "согласования в публичный GitHub Issue #" + task.issueNumber +
+                        ". Только после него GitHub сможет запустить " +
+                        "ограниченный аудит/тестирование этого проекта. " +
+                        "Никакого изменения исходников, запуска торговых операций " +
+                        "или публикации видео. Одна попытка, без скрытых повторов. " +
+                        "Согласовать и отправить обработчику?")
+                .setNegativeButton("Не разрешать", null)
+                .setPositiveButton("Согласовать одну попытку", (dialog, button) -> {
+                    showResult("Проверяю актуальный Issue и создаю согласование…");
+                    async(() -> {
+                        String approval = GithubMissions.approve(
+                                task.issueNumber, task.uid, task.project, task.mode,
+                                secrets.load());
+                        try {
+                            approval += "\n" + GithubOperations.dispatch(
+                                    GithubOperations.MISSIONS, secrets.load());
+                        } catch (Exception error) {
+                            approval += "\nАвтозапуск обработчика не удался: " +
+                                    error.getMessage() +
+                                    ". Комментарий согласования сохранён. " +
+                                    "Плановый обработчик проверит его позднее.";
+                        }
+                        return approval;
+                    }, value -> showResult(value),
+                            error -> showResult("Согласование не завершено: " + error));
+                }).show();
+    }
+
+    private void checkMission(TaskStore.Task task) {
+        showResult("Сверяю GitHub Issue #" + task.issueNumber + "…");
+        async(() -> GithubMissions.report(task.issueNumber, task.uid, secrets.load()),
+                value -> {
+                    showResult(value);
+                    android.text.util.Linkify.addLinks(resultBox,
+                            android.text.util.Linkify.WEB_URLS);
+                    resultBox.setMovementMethod(
+                            android.text.method.LinkMovementMethod.getInstance());
+                },
+                error -> showResult("Не удалось прочитать статус миссии: " + error));
     }
 
     private void refreshLearningStatus(String message) {
@@ -1147,6 +1213,15 @@ public final class MainActivity extends Activity {
                     "☁️ Отправить задачу в GitHub Issues", false);
             add(box, publish, 7, 0);
             publish.setOnClickListener(v -> publishTask(task));
+            if (task.issueNumber > 0) {
+                Button authorize = button("🐺 Одобрить автоматическую миссию", true);
+                add(box, authorize, 7, 0);
+                authorize.setOnClickListener(v -> approveMission(task));
+                Button missionStatus = button("↻ Проверить миссию GitHub #" +
+                        task.issueNumber, false);
+                add(box, missionStatus, 7, 0);
+                missionStatus.setOnClickListener(v -> checkMission(task));
+            }
             check.setOnClickListener(v -> {
                 if (TaskStore.DRAFT.equals(task.status)) dispatchTask(task);
                 else updateRuns();
