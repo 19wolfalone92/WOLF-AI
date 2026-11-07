@@ -452,19 +452,35 @@ public final class MainActivity extends Activity {
         Button shareVideo = button("🚀 Открыть публикацию в выбранном сервисе", false);
         add(publish, shareVideo, 0, 9);
         shareVideo.setOnClickListener(v -> shareSelectedVideo());
-        Button openPlanner = button("📆 Открыть Metricool для планирования", false);
+        Button openPlanner = button("📆 Планировщики: TikTok Studio / YouTube / Metricool", false);
         add(publish, openPlanner, 0, 7);
         openPlanner.setOnClickListener(v -> {
             String caption = publicationCaption.getText().toString().trim();
-            if (!caption.isEmpty()) {
-                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                if (cm != null) cm.setPrimaryClip(
-                        ClipData.newPlainText("WOLF caption", caption));
-            }
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://app.metricool.com/")));
-            publicationStatus.setText("Планировщик Metricool открыт. " +
-                    "Для расписания/автопубликации настрой пост в Metricool. " +
-                    "Текст подписи скопирован, если был задан.");
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Открыть планировщик публикаций")
+                    .setItems(new String[]{
+                            "TikTok Studio (официальная загрузка и расписание)",
+                            "YouTube Studio (официальная загрузка и расписание)",
+                            "Metricool (подключённые социальные сети)"
+                    }, (dialog, index) -> {
+                        if (!caption.isEmpty()) {
+                            ClipboardManager cm =
+                                    (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (cm != null) cm.setPrimaryClip(
+                                    ClipData.newPlainText("WOLF video caption", caption));
+                        }
+                        String url = index == 0 ?
+                                "https://www.tiktok.com/tiktokstudio/upload" :
+                                index == 1 ? "https://studio.youtube.com/" :
+                                "https://app.metricool.com/";
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                        publicationStatus.setText("Открыт официальный планировщик. " +
+                                "Выбери видео и дату внутри сервиса. " +
+                                "Подпись скопирована, если была задана. " +
+                                "WOLF AI не утверждает, что публикация запланирована.");
+                    })
+                    .setNegativeButton("Отмена", null)
+                    .show();
         });
         add(publish, text("⚠️ Встроенный доступ к Metricool API не включён: " +
                 "бесплатный тариф не предоставляет REST API. " +
