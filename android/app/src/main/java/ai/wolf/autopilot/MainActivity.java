@@ -30,6 +30,8 @@ import java.util.concurrent.Executors;
  * notes; llama.cpp chat is optional and localhost-only.
  */
 public final class MainActivity extends Activity {
+    private static final int EXPORT_LEARNING = 6140;
+    private static final int IMPORT_LEARNING = 6141;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -497,6 +499,27 @@ public final class MainActivity extends Activity {
                 refreshLearningStatus("Пример классификации сохранён для " + selectedProject() + ".");
             } catch (Exception error) { refreshLearningStatus(error.getMessage()); }
         });
+        Button backup = button("💾 Экспорт изученного в JSON", false);
+        add(learn, backup, 0, 7);
+        backup.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "wolf-learning-backup.json");
+            startActivityForResult(intent, EXPORT_LEARNING);
+        });
+        Button restore = button("📂 Восстановить знания из JSON", false);
+        add(learn, restore, 0, 7);
+        restore.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            startActivityForResult(intent, IMPORT_LEARNING);
+        });
+        add(learn, text("Резервная копия не зашифрована. " +
+                "Содержит только явно сохранённые факты и примеры, " +
+                "но не GitHub-токен и не историю чата. " +
+                "Не делись копией с посторонними.", 12, ORANGE, false), 2, 8);
         Button clearKnowledge = button("🗑 Очистить всё изученное на телефоне", false);
         add(learn, clearKnowledge, 0, 0);
         clearKnowledge.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
@@ -863,6 +886,52 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_LEARNING) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            Uri target = data.getData();
+            refreshLearningStatus("Создаю локальную резервную копию…");
+            async(() -> {
+                byte[] bytes = learning.exportJson().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                try (java.io.OutputStream out = getContentResolver().openOutputStream(target, "w")) {
+                    if (out == null) throw new IllegalStateException("Файл недоступен.");
+                    out.write(bytes);
+                    out.flush();
+                }
+                return "Резервная копия знаний записана: " + bytes.length + " байт.";
+            }, result -> refreshLearningStatus(result),
+                    error -> refreshLearningStatus("Ошибка экспорта: " + error));
+            return;
+        }
+        if (requestCode == IMPORT_LEARNING) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            Uri source = data.getData();
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Заменить локальные знания из файла?")
+                    .setMessage("Существующие заметки и примеры маршрутизации " +
+                            "будут заменены содержимым выбранного JSON. " +
+                            "GitHub-токен и чат останутся нетронутыми.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Восстановить", (dialog, button) -> {
+                        refreshLearningStatus("Проверяю выбранную резервную копию…");
+                        async(() -> {
+                            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+                            try (java.io.InputStream in = getContentResolver().openInputStream(source)) {
+                                if (in == null) throw new IllegalArgumentException("Файл не открывается.");
+                                byte[] buffer = new byte[4096];
+                                int n;
+                                while ((n = in.read(buffer)) != -1) {
+                                    if (output.size() + n > 120000)
+                                        throw new IllegalArgumentException("Файл превышает лимит 120 КБ.");
+                                    output.write(buffer, 0, n);
+                                }
+                            }
+                            learning.importJson(output.toString("UTF-8"));
+                            return "Локальные знания восстановлены.";
+                        }, result -> refreshLearningStatus(result),
+                                error -> refreshLearningStatus("Импорт отклонён: " + error));
+                    }).show();
+            return;
+        }
         if (requestCode != PublicationCenter.PICK_VIDEO) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
             publicationStatus.setText("Выбор видео отменён."); return;
