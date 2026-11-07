@@ -39,10 +39,10 @@ public final class MainActivity extends Activity {
     private static final int GREEN = Color.rgb(122, 231, 170);
     private static final int ORANGE = Color.rgb(255, 196, 114);
     private static final String[] PROJECT_CODES = {
-            "studio", "shaira", "williams", "williams-ai", "english-child"
+            "wolf", "studio", "shaira", "williams", "williams-ai", "english-child"
     };
     private static final String[] PROJECT_TITLES = {
-            "🎬 STORY GLITCH Studio", "❤️ Shaira — русский язык",
+            "🐺 WOLF AI — самоаудит", "🎬 STORY GLITCH Studio", "❤️ Shaira — русский язык",
             "📈 Williams Bot", "🧠 Williams AI", "📚 Eva English Child"
     };
     private static final String[] MODES = {"audit", "test"};
@@ -62,6 +62,7 @@ public final class MainActivity extends Activity {
     private TextView aiOutput;
     private TextView aiStatus;
     private TextView cloudStatus;
+    private TextView backlogStatus;
     private LinearLayout tasksContainer;
     private LinearLayout runsContainer;
 
@@ -272,6 +273,19 @@ public final class MainActivity extends Activity {
                 "Сборка Android APK, технический предпросмотр Studio и проверка бесплатных провайдеров.");
         cloudStatus = text("Статус GitHub ещё не проверен.", 13, MUTED, false);
         add(cloud, cloudStatus, 9, 10);
+
+        Button repair = button("🛠 Самоисправление WOLF AI → Pull Request", true);
+        add(cloud, repair, 0, 8);
+        repair.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Проверяемое самоисправление WOLF AI")
+                .setMessage("GitHub выполнит только безопасные автоматические исправления Python " +
+                        "в WOLF-AI, затем прогонит тесты и, если есть изменения, попробует " +
+                        "создать отдельный Pull Request. В main ничего автоматически не попадёт. " +
+                        "Другие проекты, торговля и TikTok не затрагиваются. Запустить?")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Запустить", (dialog, button) ->
+                        runTrustedWorkflow(GithubOperations.REPAIR))
+                .show());
         Button buildApk = button("📲 Собрать APK WOLF AI", true);
         add(cloud, buildApk, 0, 7);
         buildApk.setOnClickListener(v -> runTrustedWorkflow(GithubOperations.APK));
@@ -281,9 +295,26 @@ public final class MainActivity extends Activity {
         Button providerTests = button("🧪 Тестировать бесплатные провайдеры", false);
         add(cloud, providerTests, 0, 7);
         providerTests.setOnClickListener(v -> runTrustedWorkflow(GithubOperations.FREE_TESTS));
-        Button checkCloud = button("↻ Проверить 3 процесса GitHub", false);
+        Button checkCloud = button("↻ Проверить 4 процесса GitHub", false);
         add(cloud, checkCloud, 0, 7);
         checkCloud.setOnClickListener(v -> refreshTrustedWorkflows());
+        backlogStatus = text("Очередь задач GitHub и Pull Requests пока не загружена.", 13, MUTED, false);
+        add(cloud, backlogStatus, 0, 8);
+        Button showBacklog = button("📋 Задания GitHub и открытые PR", false);
+        add(cloud, showBacklog, 0, 8);
+        showBacklog.setOnClickListener(v -> {
+            backlogStatus.setText("Считываю публичные Issues и Pull Requests…");
+            async(() -> GithubBacklog.list(false, secrets.load()) + "\n" +
+                            GithubBacklog.list(true, secrets.load()),
+                    value -> {
+                        backlogStatus.setText(value);
+                        android.text.util.Linkify.addLinks(backlogStatus,
+                                android.text.util.Linkify.WEB_URLS);
+                        backlogStatus.setMovementMethod(
+                                android.text.method.LinkMovementMethod.getInstance());
+                    },
+                    error -> backlogStatus.setText("GitHub недоступен: " + error));
+        });
         Button aiDiagnose = button("🧠 Объяснить последнюю ошибку CI локальным ИИ", false);
         add(cloud, aiDiagnose, 0, 7);
         aiDiagnose.setOnClickListener(v -> analyzeRecentFailure());
@@ -293,7 +324,8 @@ public final class MainActivity extends Activity {
                 Uri.parse("https://github.com/19wolfalone92/WOLF-AI/actions/workflows/wolf-ai-android.yml"))));
 
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
-                "GitHub PAT: разрешение Actions Read/Write для WOLF-AI и Two-Worlds-Studio. " +
+                "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
+                "Для публикации задач нужны Issues: Read and write на WOLF-AI. " +
                 "Сохраняется зашифрованно через Android Keystore, не загружается в репозиторий.");
         connectionState = text("Статус токена", 13, MUTED, true);
         add(credentials, connectionState, 12, 6);
@@ -366,7 +398,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 2.0 • Под контролем пользователя • Без Work", 12, MUTED, false);
+        TextView footer = text("WOLF AI 2.1 • Проверяемые правки • Без Work", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -481,7 +513,8 @@ public final class MainActivity extends Activity {
         async(() -> {
             StringBuilder out = new StringBuilder();
             for (String kind : new String[]{
-                    GithubOperations.APK, GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
+                    GithubOperations.APK, GithubOperations.REPAIR,
+                    GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
                 try {
                     out.append(GithubOperations.report(kind, secrets.load())).append("\n\n");
                 } catch (Exception error) {
@@ -548,6 +581,37 @@ public final class MainActivity extends Activity {
         }, error -> showResult("Сверка не выполнена: " + error));
     }
 
+    private void publishTask(TaskStore.Task task) {
+        if (task.issueNumber > 0) {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(
+                    "https://github.com/19wolfalone92/WOLF-AI/issues/" + task.issueNumber)));
+            return;
+        }
+        if (GithubBacklog.suspectedSecret(task.text)) {
+            showResult("В задании обнаружена строка, похожая на ключ или пароль. " +
+                    "Удалите её перед публикацией на GitHub.");
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Опубликовать задачу публично?")
+                .setMessage("Создать открытый GitHub Issue в WOLF-AI?\n\n" +
+                        task.text + "\n\nЕго смогут читать другие люди. " +
+                        "Он не выполняется автоматически. Нужен токен с Issues: Read and write.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Опубликовать", (dialog, button) -> {
+                    showResult("Отправляю только подтверждённое задание в GitHub…");
+                    async(() -> {
+                        GithubBacklog.IssueReceipt receipt = GithubBacklog.create(
+                                task.text, task.project, task.mode, task.uid, secrets.load());
+                        tasks.markIssue(task.id, task.uid, receipt.number);
+                        return receipt.message;
+                    }, message -> {
+                        showResult(message);
+                        renderTasks();
+                    }, error -> showResult("Issue не создан: " + error));
+                }).show();
+    }
+
     private void renderTasks() {
         if (tasksContainer == null) return;
         tasksContainer.removeAllViews();
@@ -572,7 +636,9 @@ public final class MainActivity extends Activity {
                 default: status = "ЧЕРНОВИК НА ТЕЛЕФОНЕ"; stateColor = MUTED;
             }
             add(box, text(task.project + " • " + task.mode + " • " + status +
-                    (task.runId > 0 ? " • #" + task.runId : ""), 12, stateColor, true), 0, 8);
+                    (task.runId > 0 ? " • CI #" + task.runId : "") +
+                    (task.issueNumber > 0 ? " • GitHub Issue #" + task.issueNumber : ""),
+                    12, stateColor, true), 0, 8);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             Button check = button(TaskStore.DRAFT.equals(task.status) ? "▶ Проверить" : "↻ Статус", true);
@@ -582,6 +648,11 @@ public final class MainActivity extends Activity {
             row.addView(check, half);
             row.addView(remove, new LinearLayout.LayoutParams(0, dp(48), 1));
             add(box, row, 0, 0);
+            Button publish = button(task.issueNumber > 0 ?
+                    "✓ Задание на GitHub #" + task.issueNumber :
+                    "☁️ Отправить задачу в GitHub Issues", false);
+            add(box, publish, 7, 0);
+            publish.setOnClickListener(v -> publishTask(task));
             check.setOnClickListener(v -> {
                 if (TaskStore.DRAFT.equals(task.status)) dispatchTask(task);
                 else updateRuns();

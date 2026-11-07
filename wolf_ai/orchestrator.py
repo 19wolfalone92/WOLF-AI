@@ -20,6 +20,7 @@ from pathlib import Path
 
 OWNER = '19wolfalone92'
 PROJECTS = {
+    'wolf': 'WOLF-AI',
     'studio': 'Two-Worlds-Studio',
     'shaira': 'Shaira',
     'williams': 'Williams',
@@ -57,6 +58,12 @@ def recipes(project: str, mode: str) -> tuple[Step, ...]:
     # Parser only: reads source without importing project code or writing .pyc.
     syntax_code = "def syntax_error(p):\n try: ast.parse(p.read_text(encoding='utf-8'), filename=str(p))\n except (SyntaxError,UnicodeError) as e: return e\n" + syntax_code
     syntax = (Step('python-syntax', (sys.executable, '-B', '-c', syntax_code), 150),)
+    if project == 'wolf':
+        steps = syntax
+        if mode == 'test':
+            steps += (Step('wolf-unit-tests', (sys.executable, '-B', '-m',
+                    'unittest', 'discover', '-s', 'tests', '-p', 'test_wolf*.py', '-v'), 180),)
+        return steps
     if project == 'studio':
         steps = (
             syntax[0],

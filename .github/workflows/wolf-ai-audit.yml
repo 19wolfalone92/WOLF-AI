@@ -7,7 +7,7 @@ on:
       project:
         description: Which repository to inspect (never mutate)
         type: choice
-        options: [studio, shaira, williams, williams-ai, english-child]
+        options: [wolf, studio, shaira, williams, williams-ai, english-child]
         required: true
         default: studio
       client_task_id:
@@ -26,8 +26,9 @@ on:
   pull_request:
     paths:
       - 'wolf_ai/**'
-      - 'tests/test_wolf_ai.py'
+      - 'tests/test_wolf*.py'
       - '.github/workflows/wolf-ai-audit.yml'
+      - '.github/workflows/wolf-ai-repair.yml'
 
 permissions:
   contents: read
@@ -57,6 +58,7 @@ jobs:
         shell: bash
         run: |
           case "$PROJECT" in
+            wolf) echo 'TARGET_REPO=19wolfalone92/WOLF-AI' >> "$GITHUB_ENV" ;;
             studio) echo 'TARGET_REPO=19wolfalone92/Two-Worlds-Studio' >> "$GITHUB_ENV" ;;
             shaira) echo 'TARGET_REPO=19wolfalone92/Shaira' >> "$GITHUB_ENV" ;;
             williams) echo 'TARGET_REPO=19wolfalone92/Williams' >> "$GITHUB_ENV" ;;
@@ -88,5 +90,43 @@ jobs:
         with:
           name: wolf-audit-${{ github.run_id }}
           path: wolf-report/
+          if-no-files-found: warn
+          retention-days: 7
+
+  repair-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout PR (read-only)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install local pinned Ruff
+        run: python -m pip install 'ruff==0.14.3'
+      - name: Simulate bounded repairs on disposable checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+          python -B -m wolf_ai.repair_engine --repo . \
+            --report "$RUNNER_TEMP/wolf-repair-sim.json" --apply
+          python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+          ruff check --select E4,E7,E9,F821,F401,I wolf_ai tests
+          echo "Smoke run completed on disposable runner; zero GitHub write permissions."
+      - name: Upload non-destructive test receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolf-repair-smoke-${{ github.run_id }}
+          path: ${{ runner.temp }}/wolf-repair-sim.json
           if-no-files-found: warn
           retention-days: 7

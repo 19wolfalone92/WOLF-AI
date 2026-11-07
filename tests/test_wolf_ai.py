@@ -19,6 +19,12 @@ class WolfTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             recipes('studio', 'trade')
 
+    def test_wolf_self_audit_is_explicit_and_read_only(self):
+        self.assertEqual(PROJECTS["wolf"], "WOLF-AI")
+        steps = recipes("wolf", "test")
+        self.assertTrue(any(x.name == "wolf-unit-tests" for x in steps))
+        self.assertTrue(all("git" not in x.argv[:1] for x in steps))
+
     def test_planning_is_off_by_default(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
