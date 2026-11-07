@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 
 namespace {
 std::mutex guard;
@@ -44,7 +46,7 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeLoad(JNIEnv * env, jclass, jstring path)
         llama_backend_init();
         backend = true;
     }
-    if (model && loaded_path == file) return env->NewStringUTF("Qwen 0.5B загружена в память");
+    if (model && loaded_path == file) return env->NewStringUTF("GGUF уже загружен в память");
     if (model) {
         llama_model_free(model);
         model = nullptr;
@@ -55,7 +57,7 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeLoad(JNIEnv * env, jclass, jstring path)
     model = llama_model_load_from_file(file.c_str(), params);
     if (!model) return fail(env, "llama.cpp не смог открыть GGUF.");
     loaded_path = file;
-    return env->NewStringUTF("Qwen 0.5B загружена в память");
+    return env->NewStringUTF("GGUF загружен в память");
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -63,19 +65,19 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     std::lock_guard<std::mutex> lock(guard);
     if (!model) return fail(env, "Сначала открой модель.");
     std::string prompt = from_jstring(env, request);
-    if (prompt.empty() || prompt.size() > 6500) return fail(env, "Слишком длинный вопрос.");
-    int max_tokens = std::max(32, std::min((int) max_out, 256));
+    if (prompt.empty() || prompt.size() > 13500) return fail(env, "Слишком длинный контекст. Уменьшите историю или вопрос.");
+    int max_tokens = std::max(32, std::min((int) max_out, 768));
     const llama_vocab * vocab = llama_model_get_vocab(model);
     int32_t needed = -llama_tokenize(vocab, prompt.data(), (int32_t)prompt.size(),
                                       nullptr, 0, true, true);
-    if (needed <= 0 || needed > 1300) return fail(env, "Запрос не помещается в контекст.");
+    if (needed <= 0 || needed > 2500) return fail(env, "Запрос не помещается в контекст модели (до 2500 токенов).");
     std::vector<llama_token> tokens(needed);
     if (llama_tokenize(vocab, prompt.data(), (int32_t)prompt.size(),
                        tokens.data(), needed, true, true) < 0)
         return fail(env, "Ошибка токенизации.");
 
     llama_context_params cparams = llama_context_default_params();
-    cparams.n_ctx = 2048;
+    cparams.n_ctx = 4096;
     cparams.n_batch = 512;
     cparams.n_threads = 4;
     cparams.n_threads_batch = 4;
@@ -84,7 +86,14 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     if (!ctx) return fail(env, "Недостаточно памяти для контекста.");
 
     llama_sampler * sampler = llama_sampler_chain_init(llama_sampler_chain_default_params());
-    llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
+    // Better conversational quality than forced greedy decoding.
+    // Top-k/top-p + temperature controls repetition and allows varied answers.
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
+    llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.90f, 1));
+    llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.65f));
+    uint32_t seed = static_cast<uint32_t>(
+            std::chrono::steady_clock::now().time_since_epoch().count());
+    llama_sampler_chain_add(sampler, llama_sampler_init_dist(seed));
     llama_batch_ext * batch = llama_batch_ext_init(ctx);
     std::string answer;
     bool ok = true;
@@ -97,7 +106,7 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
         pos += chunk;
     }
 
-    for (int i = 0; ok && i < max_tokens && pos < 2047; i++) {
+    for (int i = 0; ok && i < max_tokens && pos < 4095; i++) {
         llama_token next = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
         int need = llama_token_to_piece(vocab, next, nullptr, 0, 0, true);
