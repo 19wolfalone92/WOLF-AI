@@ -87,6 +87,8 @@ public final class MainActivity extends Activity {
     private TextView aiOutput;
     private TextView aiStatus;
     private TextView modelStatus;
+    private SpeechCenter speaker;
+    private String lastAiAnswer;
     private Spinner answerBudgetSpinner;
     private TextView cloudStatus;
     private TextView backlogStatus;
@@ -103,6 +105,7 @@ public final class MainActivity extends Activity {
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
         learning = new LearningStore(this);
+        speaker = new SpeechCenter(this);
         metricoolAuth = new MetricoolOAuth(this);
         metricoolMcp = new MetricoolMcp(this, metricoolAuth);
         try { trainedRouter = TrainedRouter.load(getApplicationContext()); }
@@ -856,9 +859,26 @@ public final class MainActivity extends Activity {
                 chat.add("user", question);
                 chat.add("assistant", answer);
                 aiOutput.setText(answer);
+                lastAiAnswer = answer;
                 questionInput.setText("");
             }, error -> aiOutput.setText("Не удалось запустить встроенный ИИ: " + error));
         });
+        Button sayAnswer = button("🔊 Озвучить последний ответ", false);
+        add(llm, sayAnswer, 0, 7);
+        sayAnswer.setOnClickListener(v -> {
+            String state = speaker.speak(lastAiAnswer);
+            aiStatus.setText(state);
+        });
+        Button stopSpeaking = button("⏹ Остановить озвучку", false);
+        add(llm, stopSpeaking, 0, 8);
+        stopSpeaking.setOnClickListener(v -> {
+            speaker.stop();
+            aiStatus.setText("Озвучка остановлена.");
+        });
+        add(llm, text("Озвучка использует установленный Android TTS. " +
+                "Некоторые голосовые движки обращаются к интернету; " +
+                "для приватности выбери загруженный офлайн-голос в Android.",
+                12, MUTED, false), 5, 8);
         Button clearChat = button("Очистить память локального чата", false);
         add(llm, clearChat, 8, 0);
         clearChat.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
@@ -867,6 +887,8 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Отмена", null)
                 .setPositiveButton("Удалить", (dialog, button) -> {
                     chat.clearHistory();
+                    lastAiAnswer = null;
+                    speaker.stop();
                     aiOutput.setText("Локальная история очищена.");
                 })
                 .show());
@@ -1410,6 +1432,7 @@ public final class MainActivity extends Activity {
         tasks.close();
         chat.close();
         learning.close();
+        if (speaker != null) speaker.close();
         super.onDestroy();
     }
 }
