@@ -60,6 +60,10 @@ public final class MainActivity extends Activity {
     private EditText learningExample;
     private TextView publicationStatus;
     private TextView learningStatus;
+    private EditText filePathInput;
+    private EditText codeEditor;
+    private TextView codeStatus;
+    private GithubCode.FileData loadedFile;
     private Spinner projectSpinner;
     private Spinner modeSpinner;
     private EditText commandInput;
@@ -344,6 +348,85 @@ public final class MainActivity extends Activity {
         artifacts.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("https://github.com/19wolfalone92/WOLF-AI/actions/workflows/wolf-ai-android.yml"))));
 
+        LinearLayout developer = card(page, "💻 GitHub — чтение кода и Pull Request",
+                "WOLF AI может прочитать небольшой Python-файл WOLF-AI, " +
+                "предложить исправление через локальную Qwen, " +
+                "а после твоего подтверждения создать отдельную ветку и Pull Request. " +
+                "Никакого автоматического merge и изменений других проектов.");
+        codeStatus = text("Готов к чтению WOLF-AI. " +
+                "Нужны Contents и Pull requests: Read and write.", 13, MUTED, false);
+        add(developer, codeStatus, 9, 9);
+        filePathInput = entry("Например: wolf_ai/train_router.py", false);
+        add(developer, filePathInput, 0, 8);
+        Button readCode = button("📂 Прочитать исходник из GitHub", true);
+        add(developer, readCode, 0, 8);
+        codeEditor = entry("Код загруженного файла появится здесь…", true);
+        codeEditor.setMinLines(7);
+        codeEditor.setMaxLines(14);
+        codeEditor.setTextSize(12);
+        add(developer, codeEditor, 0, 9);
+        readCode.setOnClickListener(v -> {
+            String path = filePathInput.getText().toString().trim();
+            codeStatus.setText("Получаю исходник из GitHub…");
+            loadedFile = null;
+            async(() -> {
+                GithubCode.FileData value = GithubCode.fetch(path, secrets.load());
+                loadedFile = value;
+                return value.content;
+            }, value -> {
+                codeEditor.setText(value);
+                codeStatus.setText("Загружено: " + path + "\n" +
+                        "Изменения не сохраняются в GitHub до создания PR.");
+            }, error -> codeStatus.setText("Ошибка чтения GitHub: " + error));
+        });
+        Button askCode = button("🧠 Получить совет локальной Qwen по коду", false);
+        add(developer, askCode, 0, 8);
+        askCode.setOnClickListener(v -> {
+            if (loadedFile == null) {
+                codeStatus.setText("Сначала загрузи исходник."); return;
+            }
+            String snippet = codeEditor.getText().toString();
+            if (snippet.length() > 550) snippet = snippet.substring(0, 550);
+            String prompt = "Изучи короткий фрагмент Python и предложи " +
+                    "одно безопасное улучшение. Не утверждай, что правка применена. " +
+                    "Ответь по-русски:\n" + snippet;
+            codeStatus.setText("Qwen анализирует фрагмент локально…");
+            async(() -> EmbeddedAi.ask(getApplicationContext(), prompt,
+                    java.util.Collections.emptyList()), suggestion ->
+                    codeStatus.setText("Предложение локального ИИ (не применено):\n" +
+                            suggestion), error -> codeStatus.setText("ИИ недоступен: " + error));
+        });
+        Button openPr = button("🌿 Создать Pull Request из проверенной правки", false);
+        add(developer, openPr, 0, 0);
+        openPr.setOnClickListener(v -> {
+            if (loadedFile == null) {
+                codeStatus.setText("Сначала прочитай исходник."); return;
+            }
+            String edit = codeEditor.getText().toString();
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Создать Pull Request в WOLF-AI?")
+                    .setMessage("Только " + loadedFile.path +
+                            " будет заменён на текст из редактора " +
+                            "в НОВОЙ ветке. Это реальное изменение GitHub, " +
+                            "но main не меняется. Нужны Contents и Pull requests: " +
+                            "Read and write. Проверь код внимательно. Продолжить?")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Создать PR", (dialog, button) -> {
+                        codeStatus.setText("Создаю отдельную ветку и PR…");
+                        GithubCode.FileData current = loadedFile;
+                        async(() -> GithubCode.propose(current, edit, secrets.load()), url -> {
+                            codeStatus.setText("Pull Request создан:\n" + url +
+                                    "\nИзменения не объединены и должны пройти тесты.");
+                            android.text.util.Linkify.addLinks(codeStatus,
+                                    android.text.util.Linkify.WEB_URLS);
+                            codeStatus.setMovementMethod(
+                                    android.text.method.LinkMovementMethod.getInstance());
+                            loadedFile = null; // Prevent accidental duplicate submission.
+                        }, error -> codeStatus.setText("PR не создан: " + error +
+                                "\nЕсли ветка появилась, проверь GitHub вручную."));
+                    }).show();
+        });
+
         LinearLayout publish = card(page, "🎬 Центр публикаций — TikTok / YouTube / Instagram",
                 "Выбери готовый MP4 с телефона, проверь его параметры и передай видео " +
                 "в установленное приложение соцсети. Финальная публикация и настройки " +
@@ -427,6 +510,7 @@ public final class MainActivity extends Activity {
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
                 "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
                 "Для публикации задач нужны Issues: Read and write на WOLF-AI. " +
+                "Для редактора кода нужны Contents и Pull requests: Read and write на WOLF-AI. " +
                 "Сохраняется зашифрованно через Android Keystore, не загружается в репозиторий.");
         connectionState = text("Статус токена", 13, MUTED, true);
         add(credentials, connectionState, 12, 6);
