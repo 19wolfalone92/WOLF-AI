@@ -52,6 +52,14 @@ public final class MainActivity extends Activity {
     private SecureStore secrets;
     private TaskStore tasks;
     private ChatStore chat;
+    private LearningStore learning;
+    private PublicationCenter.VideoInfo selectedVideo;
+    private Spinner publicationSpinner;
+    private EditText publicationCaption;
+    private EditText learningFact;
+    private EditText learningExample;
+    private TextView publicationStatus;
+    private TextView learningStatus;
     private Spinner projectSpinner;
     private Spinner modeSpinner;
     private EditText commandInput;
@@ -71,6 +79,7 @@ public final class MainActivity extends Activity {
         secrets = new SecureStore(this);
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
+        learning = new LearningStore(this);
         buildUi();
         updateTokenStatus();
         renderTasks();
@@ -217,7 +226,7 @@ public final class MainActivity extends Activity {
         create.setOnClickListener(v -> {
             try {
                 String body = commandInput.getText().toString().trim();
-                CommandParser.Route route = CommandParser.parse(body, selectedProject(), selectedMode());
+                CommandParser.Route route = smartRoute(body);
                 tasks.add(body, route.project, route.mode);
                 commandInput.setText("");
                 showResult("Задача сохранена на телефоне. Для запуска проверки нажми «Проверить» возле задачи.");
@@ -231,7 +240,7 @@ public final class MainActivity extends Activity {
         createAndRun.setOnClickListener(v -> {
             try {
                 String body = commandInput.getText().toString().trim();
-                CommandParser.Route route = CommandParser.parse(body, selectedProject(), selectedMode());
+                CommandParser.Route route = smartRoute(body);
                 long id = tasks.add(body, route.project, route.mode);
                 commandInput.setText("");
                 renderTasks();
@@ -295,7 +304,19 @@ public final class MainActivity extends Activity {
         Button providerTests = button("🧪 Тестировать бесплатные провайдеры", false);
         add(cloud, providerTests, 0, 7);
         providerTests.setOnClickListener(v -> runTrustedWorkflow(GithubOperations.FREE_TESTS));
-        Button checkCloud = button("↻ Проверить 4 процесса GitHub", false);
+        Button train = button("🧪 Обучить маршрутизатор задач на CPU", false);
+        add(cloud, train, 0, 7);
+        train.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Обучить маршрутизатор задач?")
+                .setMessage("В GitHub запустится обучение маленького классификатора " +
+                        "по открытым учебным примерам репозитория. " +
+                        "Результат — JSON-модель и отчёт о точности. " +
+                        "Это НЕ дообучение Qwen и НЕ использование личных заметок.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Запустить", (dialog, button) ->
+                        runTrustedWorkflow(GithubOperations.TRAIN))
+                .show());
+        Button checkCloud = button("↻ Проверить 5 процессов GitHub", false);
         add(cloud, checkCloud, 0, 7);
         checkCloud.setOnClickListener(v -> refreshTrustedWorkflows());
         backlogStatus = text("Очередь задач GitHub и Pull Requests пока не загружена.", 13, MUTED, false);
@@ -322,6 +343,86 @@ public final class MainActivity extends Activity {
         add(cloud, artifacts, 0, 0);
         artifacts.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW,
                 Uri.parse("https://github.com/19wolfalone92/WOLF-AI/actions/workflows/wolf-ai-android.yml"))));
+
+        LinearLayout publish = card(page, "🎬 Центр публикаций — TikTok / YouTube / Instagram",
+                "Выбери готовый MP4 с телефона, проверь его параметры и передай видео " +
+                "в установленное приложение соцсети. Финальная публикация и настройки " +
+                "доступа подтверждаются там. Автопубликация без одобрения НЕ выполняется.");
+        publicationStatus = text("Видео не выбрано. Поддерживается MP4 до 1.5 ГБ.", 13, MUTED, false);
+        add(publish, publicationStatus, 11, 9);
+        Button selectVideo = button("📁 Выбрать видео MP4", true);
+        add(publish, selectVideo, 0, 8);
+        selectVideo.setOnClickListener(v -> {
+            try { startActivityForResult(PublicationCenter.pickIntent(), PublicationCenter.PICK_VIDEO); }
+            catch (Exception e) { publicationStatus.setText("Не удалось открыть файлы: " + e.getMessage()); }
+        });
+        add(publish, text("Куда передать видео", 13, MUTED, true), 4, 5);
+        publicationSpinner = spinner(PublicationCenter.NETWORKS);
+        add(publish, publicationSpinner, 0, 8);
+        publicationCaption = entry("Подпись, название, #хештеги (до 2000 символов)", true);
+        add(publish, publicationCaption, 0, 9);
+        Button shareVideo = button("🚀 Открыть публикацию в выбранном сервисе", false);
+        add(publish, shareVideo, 0, 9);
+        shareVideo.setOnClickListener(v -> shareSelectedVideo());
+        Button openPlanner = button("📆 Открыть Metricool для планирования", false);
+        add(publish, openPlanner, 0, 7);
+        openPlanner.setOnClickListener(v -> {
+            String caption = publicationCaption.getText().toString().trim();
+            if (!caption.isEmpty()) {
+                ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(
+                        ClipData.newPlainText("WOLF caption", caption));
+            }
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://app.metricool.com/")));
+            publicationStatus.setText("Планировщик Metricool открыт. " +
+                    "Для расписания/автопубликации настрой пост в Metricool. " +
+                    "Текст подписи скопирован, если был задан.");
+        });
+        add(publish, text("⚠️ Встроенный доступ к Metricool API не включён: " +
+                "бесплатный тариф не предоставляет REST API. " +
+                "Встроена передача через системный Android Share; " +
+                "она не гарантирует автоматическую публикацию.", 12, ORANGE, false), 5, 0);
+
+        LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
+                "Сохраняй полезные факты и собственные примеры маршрутизации. " +
+                "Приложение учитывает их локально, без платного API. " +
+                "Веса нейросети Qwen при этом не изменяются.");
+        learningStatus = text("Память загружена.", 13, MUTED, false);
+        add(learn, learningStatus, 9, 8);
+        learningFact = entry("Чему запомнить? Например: сюжет сериала состоит из 30 серий", true);
+        add(learn, learningFact, 0, 8);
+        Button remember = button("💾 Запомнить этот факт", true);
+        add(learn, remember, 0, 10);
+        remember.setOnClickListener(v -> {
+            try {
+                learning.teach(learningFact.getText().toString());
+                learningFact.setText("");
+                refreshLearningStatus("Факт добавлен в локальную память.");
+            } catch (Exception error) { refreshLearningStatus(error.getMessage()); }
+        });
+        learningExample = entry("Пример задания для выбранного проекта", true);
+        add(learn, learningExample, 0, 8);
+        Button teachRoute = button("🧭 Научить определять выбранный проект", false);
+        add(learn, teachRoute, 0, 9);
+        teachRoute.setOnClickListener(v -> {
+            try {
+                learning.teachRoute(learningExample.getText().toString(), selectedProject());
+                learningExample.setText("");
+                refreshLearningStatus("Пример классификации сохранён для " + selectedProject() + ".");
+            } catch (Exception error) { refreshLearningStatus(error.getMessage()); }
+        });
+        Button clearKnowledge = button("🗑 Очистить всё изученное на телефоне", false);
+        add(learn, clearKnowledge, 0, 0);
+        clearKnowledge.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Стереть локальные знания?")
+                .setMessage("Все факты и учебные примеры WOLF AI будут удалены с телефона. " +
+                        "История чата и задачи останутся.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Очистить", (dialog, button) -> {
+                    learning.clear();
+                    refreshLearningStatus("Локальные знания очищены.");
+                }).show());
+        refreshLearningStatus("Локальное обучение готово.");
 
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
                 "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
@@ -379,7 +480,8 @@ public final class MainActivity extends Activity {
         ask.setOnClickListener(v -> {
             String question = questionInput.getText().toString().trim();
             aiOutput.setText("Думаю на процессоре телефона…");
-            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(4)), answer -> {
+            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(4),
+                    learning.related(question, 3)), answer -> {
                 chat.add("user", question);
                 chat.add("assistant", answer);
                 aiOutput.setText(answer);
@@ -398,9 +500,15 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 2.1 • Проверяемые правки • Без Work", 12, MUTED, false);
+        TextView footer = text("WOLF AI 3.0 • Публикация через приложения • Локальное обучение", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
+    }
+
+    private CommandParser.Route smartRoute(String body) {
+        String example = learning.learnedProject(body);
+        return CommandParser.parse(body,
+                example == null ? selectedProject() : example, selectedMode());
     }
 
     private String selectedProject() {
@@ -513,7 +621,7 @@ public final class MainActivity extends Activity {
         async(() -> {
             StringBuilder out = new StringBuilder();
             for (String kind : new String[]{
-                    GithubOperations.APK, GithubOperations.REPAIR,
+                    GithubOperations.APK, GithubOperations.REPAIR, GithubOperations.TRAIN,
                     GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
                 try {
                     out.append(GithubOperations.report(kind, secrets.load())).append("\n\n");
@@ -612,6 +720,74 @@ public final class MainActivity extends Activity {
                 }).show();
     }
 
+    private void refreshLearningStatus(String message) {
+        if (learningStatus != null) {
+            learningStatus.setText(message + "\nФактов: " + learning.factCount() +
+                    " • примеров задач: " + learning.exampleCount());
+        }
+    }
+
+    private void shareSelectedVideo() {
+        if (selectedVideo == null) {
+            publicationStatus.setText("Сначала выбери видео MP4.");
+            return;
+        }
+        String platform = PublicationCenter.NETWORKS[
+                publicationSpinner.getSelectedItemPosition()];
+        String caption = publicationCaption.getText().toString().trim();
+        if (caption.length() > 2000) {
+            publicationStatus.setText("Сократи подпись до 2000 символов.");
+            return;
+        }
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Передать видео в " + platform + "?")
+                .setMessage(selectedVideo.description() + "\n\n" +
+                        selectedVideo.warning() + "\n\n" +
+                        "WOLF AI откроет приложение " + platform + ". " +
+                        "Пост не появится автоматически: публикацию нужно подтвердить " +
+                        "в выбранном сервисе. Продолжить?")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Открыть", (dialog, button) -> {
+                    try {
+                        if (!caption.isEmpty()) {
+                            ClipboardManager cm =
+                                    (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (cm != null) cm.setPrimaryClip(
+                                    ClipData.newPlainText("Video caption", caption));
+                        }
+                        PublicationCenter.share(this, selectedVideo, platform, caption);
+                        publicationStatus.setText("Видео передано в " + platform +
+                                " через Android. Заверши публикацию в соцсети; " +
+                                "WOLF AI НЕ может подтвердить, что видео опубликовано.");
+                    } catch (Exception e) {
+                        publicationStatus.setText("Передача видео не удалась: " + e.getMessage());
+                    }
+                }).show();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PublicationCenter.PICK_VIDEO) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            publicationStatus.setText("Выбор видео отменён."); return;
+        }
+        Uri uri = data.getData();
+        selectedVideo = null;
+        try {
+            getContentResolver().takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (SecurityException ignored) {
+            // Temporary read grant remains valid while in foreground.
+        }
+        publicationStatus.setText("Проверяю MP4 и параметры видео…");
+        async(() -> {
+            PublicationCenter.VideoInfo video = PublicationCenter.inspect(this, uri);
+            selectedVideo = video;
+            return video.description() + "\n" + video.warning();
+        }, result -> publicationStatus.setText(result),
+           error -> publicationStatus.setText("Видео не принято: " + error));
+    }
+
     private void renderTasks() {
         if (tasksContainer == null) return;
         tasksContainer.removeAllViews();
@@ -668,6 +844,7 @@ public final class MainActivity extends Activity {
         executor.shutdownNow();
         tasks.close();
         chat.close();
+        learning.close();
         super.onDestroy();
     }
 }
