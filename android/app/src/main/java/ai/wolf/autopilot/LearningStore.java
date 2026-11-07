@@ -144,6 +144,76 @@ public final class LearningStore extends SQLiteOpenHelper {
         }
     }
 
+    /** Export only user-taught facts/examples. Never export GitHub PAT or chat. */
+    public String exportJson() throws Exception {
+        org.json.JSONObject payload = new org.json.JSONObject();
+        payload.put("schema", 1);
+        org.json.JSONArray facts = new org.json.JSONArray();
+        org.json.JSONArray examples = new org.json.JSONArray();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT body FROM facts ORDER BY _id ASC LIMIT 100", null)) {
+            while (c.moveToNext()) facts.put(c.getString(0));
+        }
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT body,project FROM examples ORDER BY _id ASC LIMIT 120", null)) {
+            while (c.moveToNext()) examples.put(new org.json.JSONObject()
+                    .put("text", c.getString(0)).put("project", c.getString(1)));
+        }
+        payload.put("facts", facts);
+        payload.put("examples", examples);
+        return payload.toString(2);
+    }
+
+    /** Verify the complete file BEFORE mutating the DB, then replace atomically. */
+    public void importJson(String content) throws Exception {
+        if (content == null || content.length() > 120000)
+            throw new IllegalArgumentException("Файл резервной копии слишком большой.");
+        org.json.JSONObject payload = new org.json.JSONObject(content);
+        if (payload.getInt("schema") != 1 ||
+                !payload.has("facts") || !payload.has("examples"))
+            throw new IllegalArgumentException("Неизвестный формат резервной копии.");
+        org.json.JSONArray facts = payload.getJSONArray("facts");
+        org.json.JSONArray examples = payload.getJSONArray("examples");
+        if (facts.length() > 100 || examples.length() > 120)
+            throw new IllegalArgumentException("Превышен лимит фактов или примеров.");
+        List<String> validatedFacts = new ArrayList<>();
+        List<String[]> validatedExamples = new ArrayList<>();
+        for (int i = 0; i < facts.length(); i++) {
+            String value = facts.getString(i);
+            validateContent(value, 600);
+            validatedFacts.add(value);
+        }
+        for (int i = 0; i < examples.length(); i++) {
+            org.json.JSONObject value = examples.getJSONObject(i);
+            String body = value.getString("text");
+            String project = value.getString("project");
+            validateContent(body, 450);
+            if (!CommandParser.validProject(project))
+                throw new IllegalArgumentException("Некорректный проект в резервной копии.");
+            validatedExamples.add(new String[]{body, project});
+        }
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("facts", null, null);
+            db.delete("examples", null, null);
+            long now = System.currentTimeMillis();
+            for (String body : validatedFacts) {
+                ContentValues row = new ContentValues();
+                row.put("body", body); row.put("created", now);
+                db.insertOrThrow("facts", null, row);
+            }
+            for (String[] example : validatedExamples) {
+                ContentValues row = new ContentValues();
+                row.put("body", example[0]);
+                row.put("project", example[1]);
+                row.put("created", now);
+                db.insertOrThrow("examples", null, row);
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
     public void clear() {
         SQLiteDatabase db = getWritableDatabase();
         db.delete("facts", null, null);
