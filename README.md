@@ -1,9 +1,32 @@
-# 🐺 WOLF AI
+# 🐺 WOLF AI — отдельный репозиторий
 
-Standalone Android AI control center, extracted from the `Two-Worlds-Studio` repository.
+**WOLF AI полностью выделен в отдельный проект от видеостудии.** Исходники Android, Python-аудитор, тесты, CI и документация перенесены из `19wolfalone92/Two-Worlds-Studio`.
 
-**Migration in progress:** this repository is being populated with the verified source code, Android APK build workflow, Python controller, tests and documentation. No trading, TikTok publishing, or automatic paid API usage.
+## Состав
 
-Original source revision: `19wolfalone92/Two-Worlds-Studio@f70173cae1eec83d239dd7cc4ba8128b47333404`.
+- **[android/](android/)** — WOLF AI 2.0 для Android (Java + llama.cpp + Qwen2.5-Coder 0.5B), локальная SQLite-память, Android Keystore для токена, кнопки для GitHub Actions.
+- **[wolf_ai/](wolf_ai/)** — ограниченный автономный аудитор проектов и проверяемые diff-предложения (без автоматического применения).
+- **[tests/](tests/)** — Python-тесты безопасности и управления патчами.
+- **[docs/ALL_IN_ONE.md](docs/ALL_IN_ONE.md)** — сборка, SHA-256, лицензии и реальные ограничения.
+- **[legacy/](legacy/)** — исторический Termux-инсталлятор и прежний HTTP-клиент модели, не входящие в Android 2.0.
+- **[Actions](../../actions)** — сборка полной Android APK, тесты и аудит выбранных проектов.
 
-See `mobile/wolf-ai/ALL_IN_ONE.md` for native offline model details.
+## 📲 Как получить APK
+
+Открой **Actions → WOLF AI Android — Build APK → Run workflow**. После зелёной сборки открой **Artifacts**, скачай ZIP и извлеки APK. При выпуске в CI модель Qwen с проверенным SHA-256 и движок llama.cpp включаются **прямо в APK**. Termux и платный ИИ API не нужны.
+
+## 🔐 Где выполняются операции
+
+- **WOLF-AI:** собственный APK и Python-проверки.
+- **Two-Worlds-Studio:** только целевые предпросмотры/тесты видеостудии, по явно выбранным действиям через GitHub.
+- **Shaira, Williams, Williams-AI, English_Child:** аудит через явный выбор проекта, без изменения исходных репозиториев.
+
+Для запуска CI с телефона требуется пользовательский **fine-grained GitHub PAT** с **Actions: Read and write** только для WOLF-AI и Two-Worlds-Studio. Токен не хранится в публичном GitHub или в ИИ-модели. Для чтения публичных CI статусов токен не нужен.
+
+## Важные ограничения
+
+Это не взлом Work и не бесплатный аналог GPT-6: встроенная модель 0.5B гораздо слабее облачных моделей. GitHub Actions имеет собственные лимиты. CI проверяет APK-сборку и содержимое, но **не заменяет ручное тестирование на реальном Android**. Торговля и публикация роликов не разрешены.
+
+## Источник миграции
+
+`19wolfalone92/Two-Worlds-Studio@f70173cae1eec83d239dd7cc4ba8128b47333404`. Видеостудия остаётся нетронутой; вынесенные WOLF-файлы убираются из Studio отдельным проверяемым изменением после успешной сборки в новом репозитории.

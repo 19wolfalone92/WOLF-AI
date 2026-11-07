@@ -1,0 +1,12 @@
+android/app/src/main/assets/*.gguf
+android/third_party/
+android/.gradle/
+android/**/build/
+android/**/.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
+.env
+__pycache__/
+.pytest_cache/
