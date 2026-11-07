@@ -22,6 +22,7 @@ public final class GithubOperations {
     public static final String APK = "android";
     public static final String STUDIO = "studio";
     public static final String FREE_TESTS = "provider-tests";
+    public static final String REPAIR = "repair";
 
     private GithubOperations() {}
 
@@ -30,12 +31,13 @@ public final class GithubOperations {
             case APK: return "wolf-ai-android.yml";
             case STUDIO: return "ci.yml";
             case FREE_TESTS: return "studio-v3-free-tests.yml";
+            case REPAIR: return "wolf-ai-repair.yml";
             default: throw new IllegalArgumentException("Запрещённый тип задания.");
         }
     }
 
     private static HttpURLConnection connect(String kind, String suffix, String method, String token) throws Exception {
-        URL url = new URL((APK.equals(kind) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
+        URL url = new URL(((APK.equals(kind) || REPAIR.equals(kind)) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
         c.setRequestMethod(method);
         c.setInstanceFollowRedirects(false);
@@ -43,7 +45,7 @@ public final class GithubOperations {
         c.setReadTimeout(16000);
         c.setRequestProperty("Accept", "application/vnd.github+json");
         c.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-        c.setRequestProperty("User-Agent", "WolfAI-Android/1.3");
+        c.setRequestProperty("User-Agent", "WolfAI-Android/2.1");
         if (token != null && !token.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + token);
         return c;
     }
@@ -74,6 +76,10 @@ public final class GithubOperations {
             if (STUDIO.equals(kind)) {
                 payload.put("inputs", new JSONObject().put("episode_file",
                         "episodes/E01_THE_REFLECTION.json"));
+            }
+            if (REPAIR.equals(kind)) {
+                // Only predefined safe deterministic Ruff fixes. No code instructions in API payload.
+                payload.put("inputs", new JSONObject().put("mode", "repair"));
             }
             byte[] data = payload.toString().getBytes(StandardCharsets.UTF_8);
             c.setFixedLengthStreamingMode(data.length);
@@ -107,7 +113,7 @@ public final class GithubOperations {
                 sb.append("#").append(id).append(" — ")
                         .append(r.optString("status", "?")).append(" / ")
                         .append(conclusion).append("\n")
-                        .append(APK.equals(kind) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
+                        .append((APK.equals(kind) || REPAIR.equals(kind)) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
             }
             sb.append("APK/MP4/отчёты находятся в Artifacts соответствующего запуска.");
             return sb.toString();
