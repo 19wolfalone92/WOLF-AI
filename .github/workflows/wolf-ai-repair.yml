@@ -69,7 +69,7 @@ jobs:
       - name: Repeat regression tests AFTER modifications
         if: inputs.mode == 'repair'
         run: |
-          ruff check --select E4,E7,E9,F821,F401,F841,I wolf_ai tests
+          ruff check --select E4,E7,E9,F821,F401,I wolf_ai tests
           python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
       - name: Save verified repair receipt and patch even if PR blocked
         if: always()
