@@ -35,8 +35,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: wolf-ai-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Independent mobile missions must NEVER cancel one another.
+  # Repeated dispatch for a single opaque task ID queues rather than cancels.
+  group: wolf-audit-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.client_task_id || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   readonly-audit:
