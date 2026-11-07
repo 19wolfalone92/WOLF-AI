@@ -187,9 +187,11 @@ public final class GithubMissions {
         if (already >= 3)
             throw new IllegalStateException("Лимит: до трёх явных запусков одного Issue.");
         // Do not stack duplicate runs while existing mission attempt is pending.
-        if (already > 0 && !hasFinished(issue, history))
+        if (already > 0 && !hasFinished(issue, history, lastApprovalId(issue, history)))
             throw new IllegalStateException("Предыдущая попытка ещё не завершена. " +
-                    "Проверь её в GitHub Issues, затем решай вопрос повторного запуска.");
+                    "Проверь её в GitHub Issues. Для новой попытки при обрыве " +
+                    "отправь новую явную команду через GitHub после проверки, " +
+                    "чтобы не создать два параллельных запуска.");
         JSONObject posted = putComment(number, issue.approval(), token);
         return "Команда согласования опубликована в Issue #" + number +
                 " (комментарий #" + posted.getLong("id") + ").\n" +
@@ -197,12 +199,26 @@ public final class GithubMissions {
                 "результат появится в Issue после проверки GitHub Actions.";
     }
 
-    private static boolean hasFinished(Mission issue, JSONArray history) throws Exception {
+    private static long lastApprovalId(Mission issue, JSONArray history) throws Exception {
+        long id = 0;
+        for (int i = 0; i < history.length(); i++) {
+            JSONObject c = history.getJSONObject(i);
+            if ("19wolfalone92".equals(c.getJSONObject("user").optString("login")) &&
+                    issue.approval().equals(c.optString("body", "").trim()))
+                id = Math.max(id, c.optLong("id", 0));
+        }
+        return id;
+    }
+
+    private static boolean hasFinished(Mission issue, JSONArray history, long approvalId)
+            throws Exception {
+        if (approvalId <= 0) return false;
         for (int i = 0; i < history.length(); i++) {
             JSONObject c = history.getJSONObject(i);
             String body = c.optString("body", "");
             if ("github-actions[bot]".equals(c.getJSONObject("user").optString("login")) &&
-                    body.contains(issue.marker()) && body.contains(" event=finished -->"))
+                    body.contains(issue.marker() + "approval=" + approvalId +
+                            " event=finished -->"))
                 return true;
         }
         return false;
