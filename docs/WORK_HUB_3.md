@@ -40,6 +40,19 @@ No edits to Android sources, workflow configs, secrets, the trading bot,
 Shaira or Studio from this panel. Permission failures are displayed, not
 bypassed. This is user-approved source editing, not an autonomous coding agent.
 
+## Backup to survive Android debug-key changes
+
+WOLF can export explicitly saved facts and labelled routing examples to
+a user-chosen JSON file through the standard Android document picker, then
+import them after reinstall. Import validates all rows **before** an atomic
+replacement transaction. No GitHub token or chat transcript is exported.
+Backup JSON is **not encrypted**; keep it private.
+
+CI-produced debug APKs can use different signing keys and fail to install
+over an older version. Before deleting an older WOLF AI app, export learning
+and copy any important task/chat text elsewhere. Import does not restore
+GitHub PAT, work tickets or chat, which must be re-created separately.
+
 ## Video sharing: TikTok, YouTube, Instagram, Facebook and others
 
 User picks an MP4 through the Android document picker. WOLF checks duration,
