@@ -7,7 +7,7 @@ on:
       project:
         description: Which repository to inspect (never mutate)
         type: choice
-        options: [studio, shaira, williams, williams-ai, english-child]
+        options: [wolf, studio, shaira, williams, williams-ai, english-child]
         required: true
         default: studio
       client_task_id:
@@ -58,6 +58,7 @@ jobs:
         shell: bash
         run: |
           case "$PROJECT" in
+            wolf) echo 'TARGET_REPO=19wolfalone92/WOLF-AI' >> "$GITHUB_ENV" ;;
             studio) echo 'TARGET_REPO=19wolfalone92/Two-Worlds-Studio' >> "$GITHUB_ENV" ;;
             shaira) echo 'TARGET_REPO=19wolfalone92/Shaira' >> "$GITHUB_ENV" ;;
             williams) echo 'TARGET_REPO=19wolfalone92/Williams' >> "$GITHUB_ENV" ;;
