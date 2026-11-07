@@ -231,6 +231,7 @@ public final class GithubMissions {
         summary.append("🐺 GitHub Issue #").append(number).append(" — ")
                 .append(issue.project).append("/").append(issue.mode).append("\n");
         int approvals = approvals(issue, history);
+        long latestApproval = lastApprovalId(issue, history);
         summary.append("Явных одобрений: ").append(approvals).append("\n");
         boolean reserved = false, accepted = false, finished = false;
         String lastLink = "";
@@ -239,7 +240,7 @@ public final class GithubMissions {
             if (!"github-actions[bot]".equals(c.getJSONObject("user").optString("login")))
                 continue;
             String content = c.optString("body", "");
-            if (!content.contains(issue.marker())) continue;
+            if (!content.contains(issue.marker() + "approval=" + latestApproval + " ")) continue;
             if (content.contains(" event=reserved -->")) reserved = true;
             if (content.contains(" event=accepted -->")) accepted = true;
             if (content.contains(" event=finished -->")) {
