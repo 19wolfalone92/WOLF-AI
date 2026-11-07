@@ -63,17 +63,17 @@ public final class ModelVault {
 
     /** Return installed external model or null to use the bundled 0.5B. */
     public static File active(Context context) {
-        synchronized (LOCK) {
-            SharedPreferences p = prefs(context);
-            File file = target(context);
-            if (!p.getBoolean("enabled", false))
-                return null;
-            if (!file.isFile() || file.length() != p.getLong("size", -1) ||
-                    !magicOk(file))
-                throw new IllegalStateException("Импортированный GGUF повреждён или удалён. " +
-                        "Удалите модель в настройках и выберите другую.");
-            return file;
-        }
+        // A lock here would invert EmbeddedAi.LOCK -> ModelVault.LOCK during
+        // import/unload and could deadlock concurrent model operations.
+        SharedPreferences p = prefs(context);
+        File file = target(context);
+        if (!p.getBoolean("enabled", false))
+            return null;
+        if (!file.isFile() || file.length() != p.getLong("size", -1) ||
+                !magicOk(file))
+            throw new IllegalStateException("Импортированный GGUF повреждён или удалён. " +
+                    "Удалите модель в настройках и выберите другую.");
+        return file;
     }
 
     public static String selectedName(Context context, Uri uri) {
@@ -116,7 +116,6 @@ public final class ModelVault {
             File dir = folder(app);
             if (!dir.isDirectory() && !dir.mkdirs())
                 throw new IllegalStateException("Невозможно создать каталог локальных моделей.");
-            long oldSize = target(app).isFile() ? target(app).length() : 0L;
             // Includes space for the incoming GGUF, plus a safety reserve.
             long free = new StatFs(dir.getAbsolutePath()).getAvailableBytes();
             if (free < 900_000_000L)
