@@ -494,10 +494,10 @@ public final class MainActivity extends Activity {
                     .setNegativeButton("Отмена", null)
                     .show();
         });
-        add(publish, text("⚠️ Встроенный доступ к Metricool API не включён: " +
-                "бесплатный тариф не предоставляет REST API. " +
-                "Встроена передача через системный Android Share; " +
-                "она не гарантирует автоматическую публикацию.", 12, ORANGE, false), 5, 0);
+        add(publish, text("⚠️ Metricool REST API платный, но ниже доступен " +
+                "новый клиент бесплатного MCP OAuth. Пока OAuth не подтверждён, " +
+                "видео можно передавать через Android Share. " +
+                "Само открытие соцсети не означает публикацию.", 12, ORANGE, false), 5, 0);
 
         LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
                 "Сохраняй полезные факты и собственные примеры маршрутизации. " +
