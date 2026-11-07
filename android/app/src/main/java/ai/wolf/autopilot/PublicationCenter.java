@@ -8,9 +8,7 @@ import android.content.ContentResolver;
 import android.database.Cursor;
 import android.media.MediaMetadataRetriever;
 import android.net.Uri;
-import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
-import android.webkit.MimeTypeMap;
 
 import java.util.Locale;
 
@@ -120,7 +118,7 @@ public final class PublicationCenter {
         Intent intent = new Intent(Intent.ACTION_SEND);
         intent.setType("video/mp4");
         intent.putExtra(Intent.EXTRA_STREAM, info.uri);
-        intent.setClipData(ClipData.newUri(null, "WOLF video", info.uri));
+        intent.setClipData(ClipData.newRawUri("WOLF video", info.uri));
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         if (title != null && !title.trim().isEmpty()) {
             intent.putExtra(Intent.EXTRA_TEXT, title.trim());
