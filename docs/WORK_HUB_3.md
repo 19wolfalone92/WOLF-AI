@@ -20,6 +20,26 @@ ChatGPT Work's cloud browser, connected identity, unlimited compute or models.
   to GitHub Actions artifacts. It does NOT train Qwen neural weights.
   The GitHub-trained model is not automatically installed in the APK.
 
+## GitHub code editing and Pull Requests from Android
+
+The **GitHub Code** panel reads small allowlisted files from WOLF-AI using
+GitHub Contents API, provides an editable full-file text view and can ask
+the embedded offline Qwen model for a **non-applied code suggestion**.
+
+The user **must explicitly confirm** creating a pull request. On approval,
+the app rechecks the main-branch file SHA (avoids overwriting newer edits),
+creates a unique `wolf/android-...` branch, commits the user-reviewed text
+there, then opens a GitHub Pull Request targeting main. No auto-merge.
+GitHub CI can check the PR; no claims the 0.5B model wrote correct code.
+
+Scopes: `Contents: Read and write` and `Pull requests: Read and write`
+on **WOLF-AI only**, in addition to the earlier Actions/Issues scopes.
+Allowed paths: small files under `wolf_ai/*.py`,
+`tests/test_wolf*.py` and `docs/*.md` (up to 14 KB).
+No edits to Android sources, workflow configs, secrets, the trading bot,
+Shaira or Studio from this panel. Permission failures are displayed, not
+bypassed. This is user-approved source editing, not an autonomous coding agent.
+
 ## Video sharing: TikTok, YouTube, Instagram, Facebook and others
 
 User picks an MP4 through the Android document picker. WOLF checks duration,
