@@ -87,6 +87,10 @@ public final class MainActivity extends Activity {
     private TextView aiStatus;
     private TextView cloudStatus;
     private TextView backlogStatus;
+    private EditText researchQuery;
+    private TextView researchOutput;
+    private Spinner researchLanguage;
+    private volatile WikipediaResearch.Result lastResearch;
     private LinearLayout tasksContainer;
     private LinearLayout runsContainer;
 
@@ -512,6 +516,74 @@ public final class MainActivity extends Activity {
                 "новый клиент бесплатного MCP OAuth. Пока OAuth не подтверждён, " +
                 "видео можно передавать через Android Share. " +
                 "Само открытие соцсети не означает публикацию.", 12, ORANGE, false), 5, 0);
+
+        LinearLayout research = card(page, "🔎 Бесплатное исследование — Wikipedia",
+                "Поиск по русской или английской Википедии без платных API. " +
+                "Есть ссылки на статьи и фрагменты результатов. " +
+                "Запрос отправляется на Wikimedia только после твоего нажатия.");
+        researchQuery = entry("Что исследовать? Например: Билл Вильямс финансовые рынки", true);
+        add(research, researchQuery, 0, 8);
+        researchLanguage = spinner(new String[]{"ru", "en"});
+        add(research, researchLanguage, 0, 8);
+        Button searchWiki = button("🔎 Найти статьи с источниками", true);
+        add(research, searchWiki, 0, 9);
+        researchOutput = text("Поиск не запускался. Данные из чата и GitHub не отправляются.",
+                13, MUTED, false);
+        add(research, researchOutput, 8, 9);
+        searchWiki.setOnClickListener(v -> {
+            String query = researchQuery.getText().toString().trim();
+            String language = researchLanguage.getSelectedItem().toString();
+            lastResearch = null;
+            researchOutput.setText("Ищу источники Wikimedia…");
+            async(() -> {
+                WikipediaResearch.Result result = WikipediaResearch.search(query, language);
+                lastResearch = result;
+                return result.display;
+            }, result -> {
+                researchOutput.setText(result);
+                android.text.util.Linkify.addLinks(researchOutput,
+                        android.text.util.Linkify.WEB_URLS);
+                researchOutput.setMovementMethod(
+                        android.text.method.LinkMovementMethod.getInstance());
+            }, error -> researchOutput.setText("Поиск не выполнен: " + error));
+        });
+        Button saveWiki = button("💾 Сохранить первый источник в локальную память", false);
+        add(research, saveWiki, 0, 8);
+        saveWiki.setOnClickListener(v -> {
+            if (lastResearch == null || lastResearch.firstNote == null) {
+                showResult("Сначала получи результаты Wikimedia."); return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Сохранить найденную информацию?")
+                    .setMessage(lastResearch.firstNote +
+                            "\n\nЗапомнить это как справку, а не установленную истину? " +
+                            "Информация останется в приложении.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Запомнить", (dialog, button) -> {
+                        try {
+                            learning.teach(lastResearch.firstNote);
+                            refreshLearningStatus("Ссылка и фрагмент добавлены в локальную память.");
+                        } catch (Exception error) { showResult(error.getMessage()); }
+                    }).show();
+        });
+        Button explainWiki = button("🧠 Локальная Qwen: объяснить результаты", false);
+        add(research, explainWiki, 0, 0);
+        explainWiki.setOnClickListener(v -> {
+            if (lastResearch == null) {
+                researchOutput.setText("Сначала найди статьи."); return;
+            }
+            String excerpt = lastResearch.display;
+            if (excerpt.length() > 1400) excerpt = excerpt.substring(0, 1400);
+            String prompt = "Объясни по-русски кратко результаты поиска Википедии. " +
+                    "Не выдумывай факты, укажи неопределённость и рекомендуй " +
+                    "проверять первоисточники:\\n" + excerpt;
+            researchOutput.setText("Локальная модель объясняет найденное…");
+            async(() -> EmbeddedAi.ask(getApplicationContext(), prompt,
+                    java.util.Collections.emptyList()),
+                    value -> researchOutput.setText("🧠 Qwen (локально):\n" + value +
+                            "\n\nИсходные статьи доступны повторным поиском."),
+                    error -> researchOutput.setText("ИИ не ответил: " + error));
+        });
 
         LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
                 "Сохраняй полезные факты и собственные примеры маршрутизации. " +
