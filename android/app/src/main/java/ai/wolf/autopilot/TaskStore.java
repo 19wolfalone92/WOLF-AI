@@ -23,16 +23,17 @@ public final class TaskStore extends SQLiteOpenHelper {
     public static final class Task {
         public final long id;
         public final String text, project, mode, uid, status;
-        public final long created, runId;
+        public final long created, runId, issueNumber;
         public Task(long id, String text, String project, String mode,
-                    long created, String uid, String status, long runId) {
+                    long created, String uid, String status, long runId, long issueNumber) {
             this.id = id; this.text = text; this.project = project; this.mode = mode;
             this.created = created; this.uid = uid; this.status = status; this.runId = runId;
+            this.issueNumber = issueNumber;
         }
     }
 
     public TaskStore(Context context) {
-        super(context, "wolf_tasks.db", null, 2);
+        super(context, "wolf_tasks.db", null, 3);
     }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -41,7 +42,8 @@ public final class TaskStore extends SQLiteOpenHelper {
                 "body TEXT NOT NULL, project TEXT NOT NULL, " +
                 "mode TEXT NOT NULL, created INTEGER NOT NULL, " +
                 "task_uid TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'draft'," +
-                "run_id INTEGER NOT NULL DEFAULT 0)");
+                "run_id INTEGER NOT NULL DEFAULT 0," +
+                "issue_number INTEGER NOT NULL DEFAULT 0)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -58,6 +60,9 @@ public final class TaskStore extends SQLiteOpenHelper {
                 }
             }
             db.execSQL("CREATE UNIQUE INDEX tasks_uid_idx ON tasks(task_uid)");
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE tasks ADD COLUMN issue_number INTEGER NOT NULL DEFAULT 0");
         }
     }
 
@@ -86,12 +91,12 @@ public final class TaskStore extends SQLiteOpenHelper {
     public List<Task> recent() {
         ArrayList<Task> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT _id,body,project,mode,created,task_uid,status,run_id " +
+                "SELECT _id,body,project,mode,created,task_uid,status,run_id,issue_number " +
                         "FROM tasks ORDER BY _id DESC LIMIT 30", null)) {
             while (cursor.moveToNext()) {
                 result.add(new Task(cursor.getLong(0), cursor.getString(1),
                         cursor.getString(2), cursor.getString(3), cursor.getLong(4),
-                        cursor.getString(5), cursor.getString(6), cursor.getLong(7)));
+                        cursor.getString(5), cursor.getString(6), cursor.getLong(7), cursor.getLong(8)));
             }
         }
         return result;
@@ -125,6 +130,14 @@ public final class TaskStore extends SQLiteOpenHelper {
             }
         }
         return updated;
+    }
+
+    public void markIssue(long id, String uid, long number) {
+        if (number < 1) throw new IllegalArgumentException("Invalid GitHub issue number");
+        ContentValues values = new ContentValues();
+        values.put("issue_number", number);
+        getWritableDatabase().update("tasks", values, "_id=? AND task_uid=? AND issue_number=0",
+                new String[]{String.valueOf(id), uid});
     }
 
     public void remove(long id) {
