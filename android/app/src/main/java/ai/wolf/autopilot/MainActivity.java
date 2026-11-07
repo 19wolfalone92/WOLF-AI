@@ -55,6 +55,15 @@ public final class MainActivity extends Activity {
     private TaskStore tasks;
     private ChatStore chat;
     private LearningStore learning;
+    private MetricoolOAuth metricoolAuth;
+    private MetricoolMcp metricoolMcp;
+    private TextView metricoolStatus;
+    private EditText metricoolBrand;
+    private EditText metricoolVideo;
+    private EditText metricoolText;
+    private EditText metricoolWhen;
+    private Spinner metricoolNetwork;
+    private android.widget.CheckBox metricoolAuto;
     private TrainedRouter trainedRouter;
     private PublicationCenter.VideoInfo selectedVideo;
     private Spinner publicationSpinner;
@@ -87,11 +96,14 @@ public final class MainActivity extends Activity {
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
         learning = new LearningStore(this);
+        metricoolAuth = new MetricoolOAuth(this);
+        metricoolMcp = new MetricoolMcp(this, metricoolAuth);
         try { trainedRouter = TrainedRouter.load(getApplicationContext()); }
         catch (Exception ignored) { trainedRouter = null; }
         buildUi();
         updateTokenStatus();
         renderTasks();
+        handleMetricoolCallback(getIntent());
         // Public read is possible without a token. No auto-execution on app start.
     }
 
@@ -482,10 +494,10 @@ public final class MainActivity extends Activity {
                     .setNegativeButton("Отмена", null)
                     .show();
         });
-        add(publish, text("⚠️ Встроенный доступ к Metricool API не включён: " +
-                "бесплатный тариф не предоставляет REST API. " +
-                "Встроена передача через системный Android Share; " +
-                "она не гарантирует автоматическую публикацию.", 12, ORANGE, false), 5, 0);
+        add(publish, text("⚠️ Metricool REST API платный, но ниже доступен " +
+                "новый клиент бесплатного MCP OAuth. Пока OAuth не подтверждён, " +
+                "видео можно передавать через Android Share. " +
+                "Само открытие соцсети не означает публикацию.", 12, ORANGE, false), 5, 0);
 
         LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
                 "Сохраняй полезные факты и собственные примеры маршрутизации. " +
@@ -550,6 +562,78 @@ public final class MainActivity extends Activity {
         refreshLearningStatus(trainedRouter == null ?
                 "Локальное обучение готово (обученная модель не найдена)." :
                 "Локальное обучение готово. CPU-маршрутизатор встроен в APK.");
+
+        LinearLayout metricool = card(page, "📡 Metricool MCP — без платного REST API",
+                "Официальное OAuth-подключение к Metricool MCP, доступное и на Free. " +
+                "После входа можно проверить подключённые бренды и отправлять " +
+                "одобренные задания на публикацию в TikTok, YouTube, Instagram, Facebook. " +
+                "Месячные лимиты тарифа сохраняются.");
+        metricoolStatus = text(metricoolAuth.connected() ?
+                "OAuth токен сохранён на телефоне. Проверка ещё не проводилась." :
+                "Metricool MCP ещё не авторизован. Требуется разрешение владельца аккаунта.",
+                13, ORANGE, false);
+        add(metricool, metricoolStatus, 9, 9);
+        Button connectMetricool = button("🔐 Подключить Metricool Free через OAuth", true);
+        add(metricool, connectMetricool, 0, 8);
+        connectMetricool.setOnClickListener(v -> {
+            metricoolStatus.setText("Регистрирую публичный OAuth клиент…");
+            async(() -> metricoolAuth.beginAuthorization().getData().toString(), url -> {
+                try {
+                    metricoolStatus.setText("Открываю страницу входа Metricool…");
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception ex) {
+                    metricoolStatus.setText("Не удалось открыть OAuth: " + ex.getMessage());
+                }
+            }, error -> metricoolStatus.setText("Metricool OAuth недоступен: " +
+                    error + "\nМожно продолжать через Android Share и официальный планировщик."));
+        });
+        Button readBrands = button("🔎 Проверить подключение и доступные бренды", false);
+        add(metricool, readBrands, 0, 8);
+        readBrands.setOnClickListener(v -> {
+            metricoolStatus.setText("Выполняю реальный запрос к Metricool MCP…");
+            async(() -> metricoolMcp.brands(), result -> {
+                metricoolStatus.setText(result);
+                metricoolStatus.setMovementMethod(
+                        android.text.method.ScrollingMovementMethod.getInstance());
+            }, error -> metricoolStatus.setText("MCP запрос не прошёл: " +
+                    error + "\nНикаких публикаций не выполнено."));
+        });
+        add(metricool, text("Настройки публикации — только публичный URL MP4", 14, CYAN, true), 5, 8);
+        metricoolBrand = entry("Числовой ID бренда Metricool", false);
+        add(metricool, metricoolBrand, 0, 8);
+        metricoolVideo = entry("https://public-host.example/video.mp4", false);
+        add(metricool, metricoolVideo, 0, 8);
+        metricoolText = entry("Название / описание / хештеги (до 1800 символов)", true);
+        add(metricool, metricoolText, 0, 8);
+        metricoolWhen = entry("Дата с UTC offset: 2026-12-01T19:00:00+03:00", false);
+        add(metricool, metricoolWhen, 0, 8);
+        metricoolNetwork = spinner(new String[]{"tiktok","youtube","instagram","facebook"});
+        add(metricool, metricoolNetwork, 0, 9);
+        metricoolAuto = new android.widget.CheckBox(this);
+        metricoolAuto.setText("Автоматическая публикация по расписанию (иначе черновик)");
+        metricoolAuto.setTextColor(WHITE);
+        metricoolAuto.setChecked(false);
+        add(metricool, metricoolAuto, 0, 9);
+        Button createMetricool = button("📅 Отправить пост в Metricool после проверки", false);
+        add(metricool, createMetricool, 0, 9);
+        createMetricool.setOnClickListener(v -> scheduleMetricoolPost());
+        Button disconnectMetricool = button("Отключить Metricool на этом телефоне", false);
+        add(metricool, disconnectMetricool, 0, 0);
+        disconnectMetricool.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Отключить Metricool?")
+                .setMessage("Локальный OAuth-токен будет удалён. " +
+                        "Для полного отзыва доступа проверь также авторизованные приложения " +
+                        "в настройках Metricool.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Отключить", (dialog, button) -> {
+                    metricoolAuth.disconnect();
+                    metricoolStatus.setText("Metricool локально отключён.");
+                }).show());
+        add(metricool, text("Важно: нужен постоянно доступный HTTPS URL MP4. " +
+                "Файлы только на телефоне недоступны облачному планировщику. " +
+                "Авторизация OAuth может не работать, если Metricool отклоняет регистрацию " +
+                "стороннего Android-клиента. WOLF никогда не обходит отказ сервера.",
+                12, MUTED, false), 6, 0);
 
         LinearLayout credentials = card(page, "🔐 Доступ к GitHub",
                 "Для проверок нужны Actions: Read and write на WOLF-AI и Two-Worlds-Studio. " +
@@ -628,7 +712,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 3.0 • Публикация через приложения • Локальное обучение", 12, MUTED, false);
+        TextView footer = text("WOLF AI 3.1 • Metricool MCP OAuth • Обучение", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -860,6 +944,59 @@ public final class MainActivity extends Activity {
             learningStatus.setText(message + "\nФактов: " + learning.factCount() +
                     " • примеров задач: " + learning.exampleCount());
         }
+    }
+
+    private void scheduleMetricoolPost() {
+        if (!metricoolAuth.connected()) {
+            metricoolStatus.setText("Сначала пройди OAuth авторизацию Metricool.");
+            return;
+        }
+        MetricoolMcp.VideoPost request = new MetricoolMcp.VideoPost(
+                metricoolBrand.getText().toString().trim(),
+                metricoolVideo.getText().toString().trim(),
+                metricoolText.getText().toString().trim(),
+                metricoolWhen.getText().toString().trim(),
+                "Europe/Minsk",
+                metricoolNetwork.getSelectedItem().toString(),
+                metricoolAuto.isChecked());
+        String summary = "Бренд: " + request.brandId + "\nСеть: " + request.network +
+                "\nВидео: " + request.url + "\nДата: " + request.dateIso +
+                "\nПодпись: " + request.caption + "\nРежим: " +
+                (request.autoPublish ? "АВТОПУБЛИКАЦИЯ" : "ЧЕРНОВИК") +
+                "\n\nMetricool Free ограничивает число постов в месяц. " +
+                "Видео должно быть доступно серверу по указанному URL.";
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("Подтвердить действие Metricool?")
+                .setMessage(summary)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton(request.autoPublish ? "Да, запланировать публикацию" :
+                        "Создать черновик", (dialog, button) -> {
+                    metricoolStatus.setText("Отправляю один запрос в Metricool MCP…");
+                    async(() -> metricoolMcp.schedule(request),
+                            result -> metricoolStatus.setText(result),
+                            error -> metricoolStatus.setText(
+                                    "Нет подтверждения Metricool: " + error +
+                                    "\nПроверь Planner до повторной отправки: " +
+                                    "возможен неопределённый результат."));
+                }).show();
+    }
+
+    private void handleMetricoolCallback(Intent intent) {
+        if (intent == null || intent.getData() == null ||
+                !"ai.wolf.autopilot".equals(intent.getData().getScheme()))
+            return;
+        Uri data = intent.getData();
+        if (metricoolStatus == null) return;
+        metricoolStatus.setText("Подтверждаю OAuth код на сервере Metricool…");
+        async(() -> metricoolAuth.complete(data),
+                result -> metricoolStatus.setText(result),
+                error -> metricoolStatus.setText("Авторизация Metricool не завершена: " + error));
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleMetricoolCallback(intent);
     }
 
     private void shareSelectedVideo() {
