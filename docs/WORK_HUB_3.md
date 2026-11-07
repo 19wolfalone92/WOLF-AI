@@ -18,7 +18,7 @@ ChatGPT Work's cloud browser, connected identity, unlimited compute or models.
   public examples, trains a Multinomial Naive Bayes classifier with a
   reproducible holdout split, writes the JSON model and confusion matrix
   to GitHub Actions artifacts. It does NOT train Qwen neural weights.
-  The GitHub-trained model is not automatically installed in the APK.
+  The same curated dataset is trained again during Android CI and the resulting routing model is bundled inside the APK (no phone network required). On-device private examples are used separately; a training run does not silently overwrite an already installed APK.
 
 ## GitHub code editing and Pull Requests from Android
 
