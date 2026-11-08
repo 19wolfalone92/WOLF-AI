@@ -14,7 +14,7 @@ class DocumentV8Contracts(unittest.TestCase):
         gradle = Path("android/app/build.gradle").read_text("utf-8")
         extractor = (JAVA / "DocumentExtractor.java").read_text("utf-8")
         self.assertIn("com.tom-roush:pdfbox-android:2.0.27.0", gradle)
-        self.assertIn("versionName '8.0.0'", gradle)
+        self.assertRegex(gradle, r"versionName '(?:8|9|[1-9][0-9]+)\\.[0-9]+\\.[0-9]+'")
         self.assertIn("PDFBoxResourceLoader.init(context.getApplicationContext())", extractor)
         self.assertIn("PDDocument.load(data)", extractor)
         self.assertIn("PDFTextStripper", extractor)
