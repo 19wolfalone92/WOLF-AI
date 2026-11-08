@@ -298,6 +298,153 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
         return result.toString();
     }
 
+    /**
+     * Encrypted backup streams a normalized JSON snapshot of only the RAG
+     * documents, never GitHub tokens, Metricool OAuth or chat history.
+     * The caller owns the output ZIP stream and closes it after integrity tags.
+     */
+    public int writePortableJson(java.io.OutputStream out) throws Exception {
+        android.util.JsonWriter writer = new android.util.JsonWriter(
+                new java.io.OutputStreamWriter(
+                        new java.io.FilterOutputStream(out) {
+                            @Override public void close() throws java.io.IOException { flush(); }
+                        }, StandardCharsets.UTF_8));
+        int total = 0;
+        writer.beginObject();
+        writer.name("schema").value(1);
+        writer.name("documents").beginArray();
+        SQLiteDatabase db = getReadableDatabase();
+        try (Cursor docs = db.rawQuery(
+                "SELECT _id,name,sha256,size_bytes FROM documents ORDER BY _id ASC LIMIT 30",
+                null)) {
+            while (docs.moveToNext()) {
+                long docId = docs.getLong(0);
+                String name = docs.getString(1);
+                writer.beginObject();
+                writer.name("name").value(name);
+                writer.name("sha256").value(docs.getString(2));
+                writer.name("size_bytes").value(docs.getInt(3));
+                writer.name("segments").beginArray();
+                int sections = 0;
+                try (Cursor segments = db.rawQuery(
+                        "SELECT body FROM passages WHERE doc_key=? ORDER BY CAST(segment AS INTEGER)",
+                        new String[]{Long.toString(docId)})) {
+                    while (segments.moveToNext()) {
+                        if (++sections > MAX_CHUNKS)
+                            throw new IllegalStateException("Индекс содержит слишком много фрагментов.");
+                        writer.value(segments.getString(0));
+                    }
+                }
+                writer.endArray();
+                writer.endObject();
+                total++;
+            }
+        }
+        writer.endArray().endObject();
+        writer.flush();
+        return total;
+    }
+
+    private static void validateArchiveName(String name) {
+        if (name == null || name.length() < 4 || name.length() > 120 ||
+                name.matches("(?s).*[\\p{Cntrl}\\\\/].*"))
+            throw new IllegalArgumentException("Некорректное имя документа в архиве.");
+        String lower = name.toLowerCase(Locale.ROOT);
+        int i = lower.lastIndexOf('.');
+        if (i < 1 || !EXT.contains(lower.substring(i + 1)) ||
+                lower.contains(".env") || lower.contains("password") ||
+                lower.contains("secret") || lower.contains("token") ||
+                lower.contains("credential"))
+            throw new IllegalArgumentException("В архиве найден запрещённый файл.");
+    }
+
+    /** Transaction rollback protects the existing library on bad archive data. */
+    public int restorePortableJson(java.io.InputStream input) throws Exception {
+        android.util.JsonReader reader = new android.util.JsonReader(
+                new java.io.InputStreamReader(input, StandardCharsets.UTF_8));
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        int restored = 0;
+        try {
+            reader.beginObject();
+            if (!reader.hasNext() || !"schema".equals(reader.nextName()) ||
+                    reader.nextInt() != 1 ||
+                    !reader.hasNext() || !"documents".equals(reader.nextName()))
+                throw new IllegalArgumentException("Неизвестный формат резервной копии.");
+            // An authenticated archive is staged and fully verified BEFORE
+            // this restore method is invoked by WolfKnowledgeBackup.
+            db.delete("passages", null, null);
+            db.delete("documents", null, null);
+            reader.beginArray();
+            while (reader.hasNext()) {
+                if (++restored > MAX_DOCS)
+                    throw new IllegalArgumentException("В архиве более 30 документов.");
+                reader.beginObject();
+                if (!"name".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Ошибка заголовка документа.");
+                String name = reader.nextString();
+                validateArchiveName(name);
+                if (!"sha256".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет SHA256 в архиве.");
+                String sha = reader.nextString();
+                if (!sha.matches("[a-f0-9]{64}"))
+                    throw new IllegalArgumentException("Некорректная контрольная сумма.");
+                if (!"size_bytes".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет размера документа.");
+                int size = reader.nextInt();
+                if (size < 15 || size > MAX_BYTES)
+                    throw new IllegalArgumentException("Размер документа вне допустимых границ.");
+                if (!"segments".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет фрагментов документа.");
+                ContentValues document = new ContentValues();
+                document.put("name", name);
+                document.put("sha256", sha);
+                document.put("size_bytes", size);
+                document.put("parts", 0);
+                document.put("added_at", System.currentTimeMillis());
+                long id = db.insertOrThrow("documents", null, document);
+                reader.beginArray();
+                int parts = 0;
+                long totalBytes = 0;
+                while (reader.hasNext()) {
+                    if (++parts > MAX_CHUNKS)
+                        throw new IllegalArgumentException("Слишком много фрагментов в архиве.");
+                    String text = reader.nextString();
+                    if (text.length() < 1 || text.length() > CHUNK + 8)
+                        throw new IllegalArgumentException("Повреждён фрагмент документа.");
+                    totalBytes += text.getBytes(StandardCharsets.UTF_8).length;
+                    if (totalBytes > MAX_BYTES * 2L)
+                        throw new IllegalArgumentException("Слишком много данных в документе.");
+                    ContentValues row = new ContentValues();
+                    row.put("doc_key", Long.toString(id));
+                    row.put("segment", parts);
+                    row.put("title", name);
+                    row.put("body", text);
+                    db.insertOrThrow("passages", null, row);
+                }
+                reader.endArray();
+                if (parts < 1)
+                    throw new IllegalArgumentException("Документ без фрагментов.");
+                if (reader.hasNext())
+                    throw new IllegalArgumentException("Неожиданные данные документа.");
+                reader.endObject();
+                ContentValues update = new ContentValues();
+                update.put("parts", parts);
+                db.update("documents", update, "_id=?",
+                        new String[]{Long.toString(id)});
+            }
+            reader.endArray();
+            if (reader.hasNext())
+                throw new IllegalArgumentException("Неизвестные поля архива.");
+            reader.endObject();
+            // JsonReader must hit EOF; a trailing malformed payload is rejected.
+            if (reader.peek() != android.util.JsonToken.END_DOCUMENT)
+                throw new IllegalArgumentException("Лишние данные после архива.");
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        return restored;
+    }
+
     public int documentCount() {
         try (Cursor c = getReadableDatabase().rawQuery(
                 "SELECT COUNT(*) FROM documents", null)) {
