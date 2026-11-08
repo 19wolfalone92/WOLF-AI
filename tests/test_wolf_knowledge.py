@@ -3,8 +3,8 @@
 These are structural safety contracts; device SQLite FTS4 and the system
 file-picker require additional real-Android acceptance tests.
 """
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 JAVA = Path("android/app/src/main/java/ai/wolf/autopilot")
 

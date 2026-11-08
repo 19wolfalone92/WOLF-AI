@@ -1,13 +1,13 @@
 """Deterministic security contracts for auto-repair. Works offline."""
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from wolf_ai.repair_engine import RepairError, is_repairable, run_repair, validate_diff, command as actual_command
+from wolf_ai.repair_engine import RepairError, is_repairable, run_repair, validate_diff
+from wolf_ai.repair_engine import command as actual_command
 
 
 class RepairEngineTests(unittest.TestCase):

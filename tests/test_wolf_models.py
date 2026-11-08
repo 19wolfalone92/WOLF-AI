@@ -1,7 +1,6 @@
 """Offline model-slot contracts (structural; Android runtime requires a device)."""
-from pathlib import Path
-import re
 import unittest
+from pathlib import Path
 
 JAVA = Path("android/app/src/main/java/ai/wolf/autopilot")
 NATIVE = Path("android/app/src/main/cpp/wolf_native.cpp")

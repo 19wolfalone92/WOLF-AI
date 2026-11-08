@@ -3,8 +3,8 @@
 These are source-level release checks. Real Android document handling,
 cryptographic round-trips and phone RAM performance still need device tests.
 """
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 JAVA = Path("android/app/src/main/java/ai/wolf/autopilot")
 

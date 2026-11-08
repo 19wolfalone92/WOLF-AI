@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from wolf_ai.train_router import LABELS, evaluate, fit, load_examples, predict, split, train
+from wolf_ai.train_router import (
+    LABELS,
+    fit,
+    load_examples,
+    predict,
+    split,
+    train,
+)
 
 
 class RouterTrainingTests(unittest.TestCase):

@@ -1,10 +1,11 @@
-import tempfile
-import unittest
 import io
 import json
-from unittest.mock import patch
+import tempfile
+import unittest
 from pathlib import Path
-from wolf_ai.patch_proposal import select_files, validate_patch, propose
+from unittest.mock import patch
+
+from wolf_ai.patch_proposal import propose, select_files, validate_patch
 
 
 class PatchProposalTests(unittest.TestCase):

@@ -1,15 +1,16 @@
 """Contract tests for WOLF durable, consent-gated mission queue."""
 from __future__ import annotations
 
-import hashlib
 import re
 import unittest
-from datetime import datetime, timezone
-from unittest.mock import patch
 
 from wolf_ai.missions import (
-    MAX_APPROVALS_PER_ISSUE, MissionError, approval_ids, matching_run,
-    observed_markers, parse_issue, run_once,
+    MissionError,
+    approval_ids,
+    matching_run,
+    observed_markers,
+    parse_issue,
+    run_once,
 )
 
 

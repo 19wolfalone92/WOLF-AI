@@ -3,8 +3,8 @@
 These are structural tests; actual Android runtime and GitHub permission
 behavior must still be verified on the owner's device/account.
 """
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 JAVA = Path("android/app/src/main/java/ai/wolf/autopilot")
 WORKFLOW = Path(".github/workflows/wolf-ai-agent.yml")
