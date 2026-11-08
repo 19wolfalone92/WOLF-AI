@@ -33,13 +33,17 @@ class PortableWorkspaceContracts(unittest.TestCase):
 
     def test_aes_authenticated_and_all_components_validated_first(self):
         backup = java("WolfWorkspaceBackup")
-        self.assertIn('"WOLFWK9\\n"', backup)
-        self.assertIn('Cipher.getInstance("AES/GCM/NoPadding")', backup)
-        self.assertIn("PBKDF2WithHmacSHA256", backup)
-        self.assertIn("ITERATIONS = 240_000", backup)
+        implementation = java("WorkspaceCrypto")
+        self.assertIn("WOLFWK9", implementation)
+        self.assertIn('Cipher.getInstance("AES/GCM/NoPadding")', implementation)
+        self.assertIn("PBKDF2WithHmacSHA256", implementation)
+        self.assertIn("ITERATIONS = 240_000", implementation)
         self.assertIn("new SecureRandom()", backup)
-        self.assertIn("GCMParameterSpec(128, iv)", backup)
-        self.assertIn("cipher.updateAAD(MAGIC)", backup)
+        self.assertIn("GCMParameterSpec(128, iv)", implementation)
+        self.assertIn("result.updateAAD(MAGIC)", implementation)
+        self.assertIn("WorkspaceCrypto.cipher(", backup)
+        self.assertIn("Cipher.ENCRYPT_MODE, passphrase, salt, iv", backup)
+        self.assertIn("Cipher.DECRYPT_MODE, passphrase, salt, iv", backup)
         self.assertIn("CipherInputStream(sourceInput, cipher)", backup)
         self.assertIn("while ((read = decrypted.read(bytes)) != -1)", backup)
         self.assertIn("zip.closeEntry(); // Triggers CRC validation", backup)
@@ -56,6 +60,12 @@ class PortableWorkspaceContracts(unittest.TestCase):
         self.assertIn("library.delete()", backup)
         self.assertIn("oldLibrary.delete()", backup)
         self.assertIn("Arrays.fill(passphrase, '\\0')", backup)
+
+    def test_java_runtime_crypto_suite_is_executed_in_android_ci(self):
+        workflow = Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
+        self.assertIn("WorkspaceCryptoTest.java", workflow)
+        self.assertIn("ai.wolf.autopilot.WorkspaceCryptoTest", workflow)
+        self.assertIn("javac", workflow)
 
     def test_chat_backup_bounded_and_transactional(self):
         store = java("ChatStore")
@@ -105,7 +115,7 @@ class PortableWorkspaceContracts(unittest.TestCase):
         self.assertIn("temporaryKnowledgePassword = null", screen)
         self.assertIn("renderTasks()", screen)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '9.0.0'", gradle)
+        self.assertIn("versionName '9.1.0'", gradle)
 
 
 if __name__ == "__main__":
