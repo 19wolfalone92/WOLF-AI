@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 public final class KnowledgeBase extends SQLiteOpenHelper {
     private static final int MAX_DOCS = 30;
     private static final int MAX_BYTES = 1_500_000;
+    private static final int MAX_INPUT_BYTES = 4_000_000;
     private static final int MAX_CHUNKS = 1900;
     private static final int CHUNK = 1050;
     private static final int OVERLAP = 130;
@@ -43,7 +44,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
     private static final Set<String> EXT = new HashSet<>(Arrays.asList(
             "txt", "md", "markdown", "csv", "log", "json", "xml",
             "html", "htm", "py", "js", "ts", "java", "kt",
-            "yaml", "yml", "srt", "ini", "css", "sql"));
+            "yaml", "yml", "srt", "ini", "css", "sql", "pdf", "docx"));
     private static final Set<String> STOP = new HashSet<>(Arrays.asList(
             "как", "что", "где", "когда", "если", "для", "или", "это",
             "нужно", "можно", "сделай", "проверь", "весь", "все",
@@ -113,7 +114,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
         int dot = lower.lastIndexOf('.');
         if (dot < 1 || !EXT.contains(lower.substring(dot + 1)))
             throw new IllegalArgumentException("Поддерживаются текст, MD, CSV, JSON, код и SRT. " +
-                    "PDF/DOCX и двоичные файлы пока не индексируются.");
+                    "Бинарные форматы, кроме текстового PDF и DOCX, не индексируются.");
         if (lower.contains(".env") || lower.contains("secret") ||
                 lower.contains("credential") || lower.contains("password") ||
                 lower.contains("token")) {
@@ -169,14 +170,18 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
             byte[] buffer = new byte[8192];
             int n;
             while ((n = in.read(buffer)) != -1) {
-                if (out.size() + n > MAX_BYTES)
-                    throw new IllegalArgumentException("Размер превышает 1.5 МБ. " +
-                            "Раздели документ на несколько UTF-8 текстовых файлов.");
+                if (out.size() + n > MAX_INPUT_BYTES)
+                    throw new IllegalArgumentException("Входной файл больше 4 МБ. " +
+                            "Раздели большой PDF/DOCX на несколько частей.");
                 out.write(buffer, 0, n);
             }
             input = out.toByteArray();
         }
-        String content = validText(input);
+        String lower = name.toLowerCase(Locale.ROOT);
+        String content = (lower.endsWith(".pdf") || lower.endsWith(".docx")) ?
+                DocumentExtractor.extract(context, name, input) : validText(input);
+        if (content.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES)
+            throw new IllegalArgumentException("Текст документа превышает 1,5 МБ.");
         String digest = hex(MessageDigest.getInstance("SHA-256").digest(input));
         List<String> passages = chunk(content);
         SQLiteDatabase db = getWritableDatabase();
@@ -195,7 +200,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
             ContentValues document = new ContentValues();
             document.put("name", name);
             document.put("sha256", digest);
-            document.put("size_bytes", input.length);
+            document.put("size_bytes", content.getBytes(StandardCharsets.UTF_8).length);
             document.put("parts", passages.size());
             document.put("added_at", System.currentTimeMillis());
             long docId = db.insertOrThrow("documents", null, document);
