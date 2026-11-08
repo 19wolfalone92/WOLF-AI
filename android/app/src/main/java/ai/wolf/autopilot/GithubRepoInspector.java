@@ -121,13 +121,14 @@ public final class GithubRepoInspector {
      */
     public static SourceExcerpt readSource(String repoName, String path,
                                            int fromLine, String token) throws Exception {
+        String lowerPath = path == null ? "" : path.toLowerCase(Locale.ROOT);
         if (!permitted(repoName) || path == null || path.length() > 150 ||
                 fromLine < 1 || fromLine > 12000 || !SAFE_FILE.matcher(path).matches() ||
                 path.startsWith("/") || path.contains("..") ||
                 path.startsWith(".") || path.contains("/.") ||
-                path.contains("secret") || path.contains("private") ||
-                path.contains("credential") || path.contains(".env") ||
-                path.contains("password") || path.contains("token") ||
+                lowerPath.contains("secret") || lowerPath.contains("private") ||
+                lowerPath.contains("credential") || lowerPath.contains(".env") ||
+                lowerPath.contains("password") || lowerPath.contains("token") ||
                 !(path.endsWith(".py") || path.endsWith(".java") ||
                   path.endsWith(".kt") || path.endsWith(".js") ||
                   path.endsWith(".ts") || path.endsWith(".md") ||
@@ -162,10 +163,13 @@ public final class GithubRepoInspector {
         }
         if (excerpt.length() == 0)
             throw new IllegalStateException("Не удалось получить окно исходного файла.");
+        String url = item.optString("html_url", "");
+        String approvedPrefix = "https://github.com/" + OWNER + "/" + repoName + "/blob/";
+        if (!url.startsWith(approvedPrefix))
+            throw new IllegalStateException("GitHub не предоставил безопасную ссылку исходника.");
         return new SourceExcerpt(
                 repoName, path, item.getString("sha"), excerpt.toString(),
-                "https://github.com/" + OWNER + "/" + repoName + "/blob/" +
-                        item.getString("sha") + "/" + path + "#L" + fromLine + "-L" + last,
+                url + "#L" + fromLine + "-L" + last,
                 fromLine, last);
     }
 
