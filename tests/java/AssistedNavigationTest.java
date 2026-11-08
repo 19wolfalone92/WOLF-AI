@@ -50,6 +50,17 @@ public final class AssistedNavigationTest {
         check(click.contains("matches[0].click()"), "fixed click");
         check(!preview.contains("eval("), "no arbitrary eval");
         check(!preview.contains("document.cookie"), "cookies never inspected");
+        java.util.List<String> flow=BrowserFlowPlan.parse(
+                "Профиль > Настройки > Помощь");
+        check(flow.size()==3, "up to four pre-approved steps");
+        try {
+            BrowserFlowPlan.parse("Профиль > Оплатить");
+            throw new AssertionError("Unsafe step accepted");
+        } catch (IllegalArgumentException expected) { count++; }
+        try {
+            BrowserFlowPlan.parse("A > B > C > D > E");
+            throw new AssertionError("Unbounded steps accepted");
+        } catch (IllegalArgumentException expected) { count++; }
         try {
             BrowserActionPolicy.safeOrigin("http://github.com/");
             throw new AssertionError("http not denied");
