@@ -58,12 +58,17 @@ public final class LocalToolAgent {
                 question.matches("(?is).*(?:private[ _-]?key|password\\s*[:=]|token\\s*[:=]).*"))
             throw new IllegalArgumentException("Не передавай ключи и пароли в инструментальный режим.");
         String lower = question.toLowerCase(Locale.ROOT);
+        // Never forward ordinary debugging/project requests to Wikipedia.
+        // Only explicit encyclopaedia/research intent sends question text out.
         boolean wiki = hasAny(lower,
-                "википед", "wikipedia", "wiki", "найди", "найти", "источни",
-                "энциклоп", "кто такой", "что известно", "look up", "search");
+                "википед", "wikipedia", "wiki", "энциклоп", "кто такой",
+                "что известно", "найди информацию", "найти статьи",
+                "поиск в интернете", "источники по теме", "look up", "research");
         boolean github = hasAny(lower,
                 "github", "гитхаб", "ci ", "сборк", "actions", "workflow",
-                "коммит", "репозитор", "пулл-реквест", "pull request");
+                "коммит", "репозитор", "пулл-реквест", "pull request",
+                "исходник", "проверь код", "проекта", "проект ", "studio",
+                "студи", "шайр", "shaira", "williams", "бота", "код ");
         // If both mentioned, both tools can be called; total network tool
         // executions are bounded by TWO per explicit user approval.
         List<LearningStore.Fact> references = memory.related(question, 3);
