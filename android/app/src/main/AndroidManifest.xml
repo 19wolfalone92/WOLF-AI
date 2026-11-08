@@ -34,6 +34,16 @@
         </activity>
         <activity android:name=".BrowserActivity" android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+        <!-- Android can bind only after the owner explicitly enables it in Settings. -->
+        <service android:name=".WolfAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice"
+                android:resource="@xml/wolf_accessibility_service" />
+        </service>
         <activity android:name=".GuideActivity" android:exported="false" />
         <activity android:name=".MetricoolBatchActivity" android:exported="false" />
         <activity
