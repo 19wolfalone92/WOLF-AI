@@ -41,6 +41,7 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertIn("documents.search(question, 3)", answer)
         self.assertIn("knowledge.deleteDocument", (JAVA / "MainActivity.java").read_text("utf-8"))
         self.assertIn("knowledge.clearAll", (JAVA / "MainActivity.java").read_text("utf-8"))
+        self.assertIn("knowledge.search(query, 5)", (JAVA / "MainActivity.java").read_text("utf-8"))
         self.assertIn("GithubRepoInspector.readSource(", (JAVA / "MainActivity.java").read_text("utf-8"))
         self.assertIn("sourceRepo.getSelectedItem()", (JAVA / "MainActivity.java").read_text("utf-8"))
 
