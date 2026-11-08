@@ -1,0 +1,76 @@
+name: WOLF AI — Public Cloud Browser (CPU)
+
+run-name: WOLF Cloud Browser • ${{ github.event_name }} • ${{ github.run_number }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Public HTTPS URL only (no logins, passwords, tokens)
+        type: string
+        required: true
+      steps:
+        description: Optional exact navigation labels separated by > (max 4)
+        type: string
+        default: ''
+        required: false
+  pull_request:
+    paths:
+      - 'wolf_ai/cloud_browser.py'
+      - 'tests/test_wolf_cloud_browser.py'
+      - '.github/workflows/wolf-ai-cloud-browser.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'wolf_ai/cloud_browser.py'
+      - 'tests/test_wolf_cloud_browser.py'
+      - '.github/workflows/wolf-ai-cloud-browser.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wolf-cloud-browser-${{ github.ref }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  public-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      WOLF_PUBLIC_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || 'https://example.com' }}
+      WOLF_STEPS: ${{ github.event_name == 'workflow_dispatch' && inputs.steps || '' }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout trusted WOLF source without workflow credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test no-login public browser safety rules
+        shell: bash
+        run: python -B -m unittest discover -s tests -p 'test_wolf_cloud_browser.py' -v
+      - name: Install pinned Playwright CPU browser
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check 'playwright==1.64.1'
+          python -m playwright install --with-deps chromium
+      - name: Run ephemeral Chromium with no user session
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-cloud-browser"
+          python -B -m wolf_ai.cloud_browser \
+            --url "$WOLF_PUBLIC_URL" \
+            --steps "$WOLF_STEPS" \
+            --output "$RUNNER_TEMP/wolf-cloud-browser"
+      - name: Archive source-grounded report and screenshots even on failed navigation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolf-public-browser-${{ github.run_id }}
+          path: ${{ runner.temp }}/wolf-cloud-browser/
+          if-no-files-found: warn
+          retention-days: 14

@@ -81,6 +81,23 @@ public final class AssistedNavigationTest {
             AssistiveCommandParser.parse("Нажми кнопку Подтвердить");
             throw new AssertionError("unsafe click label not denied");
         } catch (IllegalArgumentException expected) { count++; }
+        check(WolfCommandRouter.route("Облачный браузер https://example.com").kind ==
+                WolfCommandRouter.Kind.CLOUD_BROWSER, "cloud browser route");
+        check(WolfCommandRouter.route("Статус облачного браузера").kind ==
+                WolfCommandRouter.Kind.CLOUD_BROWSER, "cloud status route");
+        CloudBrowserCommand.Plan cloud=CloudBrowserCommand.parse(
+                "Облачный браузер https://example.com/path шаги: Профиль > Настройки");
+        check(cloud.url.equals("https://example.com/path"), "exact cloud URL");
+        check(cloud.steps.contains("Профиль"), "exact approved cloud steps");
+        try {
+            CloudBrowserCommand.parse("Облачный браузер https://localhost/admin");
+            throw new AssertionError("Local cloud URL accepted");
+        } catch(IllegalArgumentException expected) { count++; }
+        try {
+            CloudBrowserCommand.parse(
+                    "Облачный браузер https://example.com?access_token=123");
+            throw new AssertionError("Tokenized public URL accepted");
+        } catch(IllegalArgumentException expected) { count++; }
         System.out.println("PASS: " + count + " assisted browser / Android route checks.");
     }
 }
