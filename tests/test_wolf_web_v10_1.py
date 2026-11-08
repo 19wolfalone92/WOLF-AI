@@ -50,7 +50,7 @@ class SearchContracts(unittest.TestCase):
 
     def test_version_and_russian_guide_updated(self):
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '12.1.0'", gradle)
+        self.assertIn("versionName '13.0.0'", gradle)
         guide = Path("docs/WOLF_CHAT_PHONE_10_RU.md").read_text("utf-8")
         self.assertIn("Дополнение 10.1", guide)
         self.assertIn("поисковые фрагменты", guide)
