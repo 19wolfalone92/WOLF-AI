@@ -248,9 +248,17 @@ public final class MainActivity extends Activity {
         scroll.addView(page);
         setContentView(scroll);
 
-        TextView brand = text("🐺 WOLF AI", 32, CYAN, true);
+        TextView brand = text("🛠 Дополнительные инструменты", 27, CYAN, true);
         add(page, brand, 0, 2);
-        add(page, text("Автономный центр управления • Android v2.0", 14, MUTED, false), 0, 18);
+        add(page, text("Продвинутые настройки. Главный экран WOLF — простой чат.", 14, MUTED, false), 0, 12);
+        Button backToChat = button("← Вернуться в чат WOLF", true);
+        add(page, backToChat, 0, 18);
+        backToChat.setOnClickListener(v -> {
+            Intent home = new Intent(this, HomeActivity.class);
+            home.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(home);
+            finish();
+        });
 
         LinearLayout intro = card(page, "⚡ Бесплатный базовый режим",
                 "Задачи хранятся на телефоне. GitHub выполняет разрешённые проверки. " +
