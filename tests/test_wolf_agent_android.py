@@ -35,7 +35,7 @@ class AgentAndroidContracts(unittest.TestCase):
         self.assertIn('AGENT_WORKFLOW = "/actions/workflows/wolf-ai-agent.yml"', api)
         self.assertIn("GithubBacklog.suspectedSecret(goal)", api)
         self.assertIn('safeFix && !("wolf".equals(project)', api)
-        self.assertIn('agent_status IN (\\'none\\',\\'success\\',\\'failure\\')', store)
+        self.assertIn("agent_status IN ('none','success','failure')", store)
         self.assertIn("agent_submitted_at", store)
         self.assertIn("oldVersion < 4", store)
 
