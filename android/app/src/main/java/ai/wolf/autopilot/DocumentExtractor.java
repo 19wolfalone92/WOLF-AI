@@ -83,6 +83,17 @@ public final class DocumentExtractor {
                 // Read *only* the main document XML, not relationships,
                 // embedded media, macros or external content.
                 if (!"word/document.xml".equals(entryName)) {
+                    // Limit decompressed bytes BEFORE the target document so
+                    // malicious ZIP bombs cannot allocate unbounded memory.
+                    byte[] skip = new byte[8192];
+                    long skipped = 0;
+                    int length;
+                    while ((length = archive.read(skip)) != -1) {
+                        skipped += length;
+                        if (skipped > 2_000_000)
+                            throw new IllegalArgumentException(
+                                    "Непропорционально большой компонент DOCX.");
+                    }
                     archive.closeEntry();
                     continue;
                 }
@@ -116,8 +127,7 @@ public final class DocumentExtractor {
         while (event != XmlPullParser.END_DOCUMENT) {
             if (event == XmlPullParser.START_TAG) {
                 String name = parser.getName();
-                if ("t".equals(name) && "http://schemas.openxmlformats.org/" .length() > 0 &&
-                        parser.getNamespace() != null &&
+                if ("t".equals(name) && parser.getNamespace() != null &&
                         parser.getNamespace().contains("wordprocessingml"))
                     insideWordText = true;
                 else if ("tab".equals(name)) text.append('\t');
