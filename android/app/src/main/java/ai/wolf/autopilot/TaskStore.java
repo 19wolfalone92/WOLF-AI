@@ -214,6 +214,103 @@ public final class TaskStore extends SQLiteOpenHelper {
                 new String[]{String.valueOf(id), uid});
     }
 
+    /**
+     * Portable task journal; records are data only. Import NEVER dispatches
+     * or approves a workflow, Issue, TikTok posting or remote write.
+     */
+    public String exportJson() throws Exception {
+        org.json.JSONObject root = new org.json.JSONObject().put("schema", 1);
+        org.json.JSONArray values = new org.json.JSONArray();
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT body,project,mode,created,task_uid,status,run_id,issue_number," +
+                "agent_status,agent_run_id,agent_submitted_at " +
+                "FROM tasks ORDER BY _id ASC LIMIT 100", null)) {
+            while (cursor.moveToNext()) {
+                org.json.JSONObject row = new org.json.JSONObject();
+                row.put("body", cursor.getString(0));
+                row.put("project", cursor.getString(1));
+                row.put("mode", cursor.getString(2));
+                row.put("created", cursor.getLong(3));
+                row.put("uid", cursor.getString(4));
+                row.put("status", cursor.getString(5));
+                row.put("run_id", cursor.getLong(6));
+                row.put("issue_number", cursor.getLong(7));
+                row.put("agent_status", cursor.getString(8));
+                row.put("agent_run_id", cursor.getLong(9));
+                row.put("agent_submitted_at", cursor.getLong(10));
+                values.put(row);
+            }
+        }
+        root.put("tasks", values);
+        return root.toString();
+    }
+
+    public static void validatePortable(String serialized) throws Exception {
+        if (serialized == null || serialized.length() > 200_000)
+            throw new IllegalArgumentException("Слишком большой архив заданий.");
+        org.json.JSONObject root = new org.json.JSONObject(serialized);
+        if (root.getInt("schema") != 1 || root.length() != 2)
+            throw new IllegalArgumentException("Неизвестная версия архива заданий.");
+        org.json.JSONArray tasks = root.getJSONArray("tasks");
+        if (tasks.length() > 100)
+            throw new IllegalArgumentException("Архив превышает 100 задач.");
+        java.util.HashSet<String> unique = new java.util.HashSet<>();
+        for (int i = 0; i < tasks.length(); i++) {
+            org.json.JSONObject row = tasks.getJSONObject(i);
+            String body = row.getString("body");
+            String project = row.getString("project");
+            String mode = row.getString("mode");
+            String uid = row.getString("uid");
+            String status = row.getString("status");
+            String agent = row.getString("agent_status");
+            if (row.length() != 11 ||
+                    body.trim().length() < 3 || body.length() > 600 ||
+                    GithubBacklog.suspectedSecret(body) ||
+                    !CommandParser.validProject(project) ||
+                    !("audit".equals(mode) || "test".equals(mode)) ||
+                    !uid.matches("w[a-f0-9]{32}") || !unique.add(uid) ||
+                    !status.matches("[a-z_]{3,30}") ||
+                    !agent.matches("[a-z_]{3,30}"))
+                throw new IllegalArgumentException("Некорректное задание в резервной копии.");
+            long created = row.getLong("created");
+            long run = row.getLong("run_id");
+            long issue = row.getLong("issue_number");
+            long agentRun = row.getLong("agent_run_id");
+            long submittedAt = row.getLong("agent_submitted_at");
+            if (created < 0 || created > 4_102_444_800_000L ||
+                    run < 0 || issue < 0 || agentRun < 0 ||
+                    submittedAt < 0 || submittedAt > 4_102_444_800_000L)
+                throw new IllegalArgumentException("Неверный ID или дата задания.");
+        }
+    }
+
+    public void importJson(String serialized) throws Exception {
+        validatePortable(serialized);
+        org.json.JSONArray tasks = new org.json.JSONObject(serialized).getJSONArray("tasks");
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("tasks", null, null);
+            for (int i = 0; i < tasks.length(); i++) {
+                org.json.JSONObject row = tasks.getJSONObject(i);
+                ContentValues values = new ContentValues();
+                values.put("body", row.getString("body"));
+                values.put("project", row.getString("project"));
+                values.put("mode", row.getString("mode"));
+                values.put("created", row.getLong("created"));
+                values.put("task_uid", row.getString("uid"));
+                values.put("status", row.getString("status"));
+                values.put("run_id", row.getLong("run_id"));
+                values.put("issue_number", row.getLong("issue_number"));
+                values.put("agent_status", row.getString("agent_status"));
+                values.put("agent_run_id", row.getLong("agent_run_id"));
+                values.put("agent_submitted_at", row.getLong("agent_submitted_at"));
+                db.insertOrThrow("tasks", null, values);
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+    }
+
     public void remove(long id) {
         getWritableDatabase().delete("tasks", "_id=?", new String[]{String.valueOf(id)});
     }
