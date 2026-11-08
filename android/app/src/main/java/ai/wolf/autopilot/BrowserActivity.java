@@ -29,11 +29,14 @@ import android.widget.TextView;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import org.json.JSONTokener;
 
 /**
  * A real HTTPS-only, user-operated mini-browser.
  * No JavaScript by default, no WebView -> Java bridge, no local file access,
- * no arbitrary automation or injection into third-party web sessions.
+ * explicitly confirmed same-origin, navigation-only actions may run inside
+ * user-authenticated sessions. No credentials, cookies, password fields,
+ * external-domain action, arbitrary scripts or automated form submission.
  */
 public final class BrowserActivity extends Activity {
     private static final int BG = Color.rgb(10, 15, 28);
@@ -205,6 +208,13 @@ public final class BrowserActivity extends Activity {
                 status.setText("⛔ Небезопасный сайт заблокирован.");
             }
         });
+        LinearLayout helper = new LinearLayout(this);
+        helper.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(helper, new LinearLayout.LayoutParams(-1, dp(47)));
+        Button browserAssist = control("🤖 Автомаршрут по сайту");
+        helper.addView(browserAssist, new LinearLayout.LayoutParams(-1, dp(43)));
+        browserAssist.setOnClickListener(v -> showAssistedNavigation());
+
         root.addView(page, new LinearLayout.LayoutParams(-1, 0, 1f));
         status = new TextView(this);
         status.setTextColor(CYAN);
@@ -252,7 +262,126 @@ public final class BrowserActivity extends Activity {
         navigate(target == null ? "" : target);
     }
 
+    private String responseString(String json) {
+        try {
+            Object parsed = new JSONTokener(json == null ? "null" : json).nextValue();
+            return parsed instanceof String ? (String) parsed : "no-result";
+        } catch (Exception ignored) { return "no-result"; }
+    }
+
+    /**
+     * User-authenticated browsing uses WebView's own cookies only.
+     * Fixed same-origin navigation, no form reads/writes, no credential access.
+     * One explicit confirmation may authorize up to four navigation labels.
+     */
+    private void showAssistedNavigation() {
+        if (page == null || !javascriptEnabled) {
+            status.setText("Включи JS в текущей вкладке и авторизуйся вручную.");
+            return;
+        }
+        final String origin;
+        try { origin = BrowserActionPolicy.safeOrigin(page.getUrl()); }
+        catch (Exception error) {
+            status.setText("Автоматизация запрещена на этом сайте.");
+            return;
+        }
+        EditText target = new EditText(this);
+        target.setSingleLine(false);
+        target.setMaxLines(4);
+        target.setTextColor(TEXT);
+        target.setHintTextColor(CYAN);
+        target.setHint("Например: Профиль > Настройки > Помощь");
+        new AlertDialog.Builder(this)
+                .setTitle("🤖 Помощник сайта")
+                .setMessage("Войди на сайт вручную. Укажи до 4 точных названий " +
+                        "видимых безопасных ссылок/кнопок через «>». " +
+                        "WOLF не читает пароли и куки, не заполняет формы и не " +
+                        "публикует, не переводит деньги и не отправляет данные. " +
+                        "Последовательность работает только на одном HTTPS-домене. " +
+                        "При ошибке прекращается без повторов.")
+                .setView(target)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Проверить первый шаг", (dialog, which) -> {
+                    final java.util.List<String> labels;
+                    try { labels = BrowserFlowPlan.parse(target.getText().toString()); }
+                    catch (Exception error) {
+                        status.setText("Маршрут отклонён: " + error.getMessage());
+                        return;
+                    }
+                    page.evaluateJavascript(BrowserActionPolicy.script(
+                            origin, labels.get(0), false), json -> {
+                        if (page == null || isFinishing()) return;
+                        if (!"ready:1".equals(responseString(json))) {
+                            status.setText("Первый пункт не найден однозначно. " +
+                                    "Ничего не выполнено.");
+                            return;
+                        }
+                        new AlertDialog.Builder(this)
+                                .setTitle(labels.size()==1 ?
+                                        "Подтверди один клик" : "Подтверди маршрут")
+                                .setMessage("Домен: " + origin +
+                                        "\nРазрешённые шаги: " + String.join(" → ", labels) +
+                                        "\n\nWOLF вызовет не более " + labels.size() +
+                                        " кликов, по очереди. Другие домены и " +
+                                        "отправка форм запрещены. При медленной загрузке " +
+                                        "может остановиться: проверь сайт вручную.")
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton("Разрешаю маршрут", (d,w) -> {
+                                    long token = ++flowGeneration;
+                                    runWorkflowStep(labels, origin, 0, token);
+                                }).show();
+                    });
+                }).show();
+    }
+
+    private long flowGeneration;
+
+    private void runWorkflowStep(java.util.List<String> labels, String origin,
+                                 int index, long token) {
+        if (token != flowGeneration || page == null || !javascriptEnabled ||
+                isFinishing() || isDestroyed()) return;
+        final String label = labels.get(index);
+        try {
+            page.evaluateJavascript(BrowserActionPolicy.script(origin, label, false),
+                    preview -> {
+                if (token != flowGeneration || page == null) return;
+                if (!"ready:1".equals(responseString(preview))) {
+                    status.setText("⛔ Шаг " + (index+1) + " не найден или домен изменился. " +
+                            "Маршрут остановлен; новых действий не было.");
+                    flowGeneration++;
+                    return;
+                }
+                page.evaluateJavascript(BrowserActionPolicy.script(origin, label, true),
+                        result -> {
+                    if (token != flowGeneration || page == null) return;
+                    if (!"click-invoked".equals(responseString(result))) {
+                        status.setText("⛔ Шаг " + (index+1) +
+                                " не выполнен. Маршрут остановлен.");
+                        flowGeneration++;
+                        return;
+                    }
+                    if (index+1 == labels.size()) {
+                        flowGeneration++;
+                        status.setText("✓ " + labels.size() + " кликов вызваны. " +
+                                "Проверь результат на сайте: серверный успех не доказан.");
+                    } else {
+                        status.setText("✓ Шаг " + (index+1) + " из " + labels.size() +
+                                ". Проверяю следующий...");
+                        // Short bounded delay for regular navigation. If the
+                        // next DOM is unavailable, fail closed rather than retry.
+                        page.postDelayed(() -> runWorkflowStep(labels, origin,
+                                index+1, token), 1800L);
+                    }
+                });
+            });
+        } catch (Exception error) {
+            flowGeneration++;
+            status.setText("Навигация остановлена: текущая страница недоступна.");
+        }
+    }
+
     private void navigate(String query) {
+        flowGeneration++;
         try {
             String target = resolve(query);
             status.setText("Загружаю защищённую страницу…");
@@ -267,7 +396,13 @@ public final class BrowserActivity extends Activity {
         else super.onBackPressed();
     }
 
+    @Override protected void onStop() {
+        flowGeneration++; // Never continue clicks in a hidden browser.
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
+        flowGeneration++;
         if (page != null) {
             page.stopLoading();
             page.removeAllViews();

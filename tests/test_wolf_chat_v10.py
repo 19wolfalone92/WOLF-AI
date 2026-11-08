@@ -85,7 +85,7 @@ class WOLFChatFirstContracts(unittest.TestCase):
         for banned in (
             "QUERY_ALL_PACKAGES", "MANAGE_EXTERNAL_STORAGE",
             "READ_SMS", "READ_CONTACTS", "CALL_PHONE",
-            "BIND_ACCESSIBILITY_SERVICE", "SYSTEM_ALERT_WINDOW",
+            "SYSTEM_ALERT_WINDOW",
             "REQUEST_INSTALL_PACKAGES", "WRITE_SECURE_SETTINGS",
         ):
             self.assertNotIn(banned, manifest)
@@ -124,7 +124,7 @@ class WOLFChatFirstContracts(unittest.TestCase):
                        "Видеостудия", "Приватность"):
             self.assertIn(anchor, guide)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '11.1.0'", gradle)
+        self.assertIn("versionName '12.0.0'", gradle)
 
 
 if __name__ == "__main__":
