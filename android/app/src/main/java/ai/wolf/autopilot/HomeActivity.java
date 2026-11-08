@@ -203,6 +203,7 @@ public final class HomeActivity extends Activity {
                         "📂 Добавить документ в память",
                         "📱 Что WOLF может делать на телефоне",
                         "📅 Пакетные публикации Metricool",
+                        "🖱 Управление другими приложениями",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
@@ -213,8 +214,9 @@ public final class HomeActivity extends Activity {
                         case 3: pickDocument(); break;
                         case 4: showPhoneCapabilities(); break;
                         case 5: openBatchPublisher(); break;
-                        case 6: exportAnswer(); break;
-                        case 7: confirmClearChat(); break;
+                        case 6: handleAssistive("управление приложениями"); break;
+                        case 7: exportAnswer(); break;
+                        case 8: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -444,6 +446,9 @@ public final class HomeActivity extends Activity {
             case RESEARCH:
                 confirmResearch(command);
                 break;
+            case UI_AUTOMATION:
+                handleAssistive(command);
+                break;
             case DEVICE:
                 runDevice(command);
                 break;
@@ -628,6 +633,65 @@ public final class HomeActivity extends Activity {
                                     "\nПрочитан ограниченный текст страницы, " +
                                     "не её динамическое содержимое.";
                         })).show();
+    }
+
+    private void handleAssistive(String instruction) {
+        final AssistiveCommandParser.Plan plan;
+        try { plan = AssistiveCommandParser.parse(instruction); }
+        catch (Exception error) { reply("Команда не выполнена: " + error.getMessage()); return; }
+        if ("status".equals(plan.type)) {
+            reply("🖱 " + WolfAccessibilityService.status());
+            return;
+        }
+        if ("cancel".equals(plan.type)) {
+            WolfAccessibilityService.cancel();
+            reply("Ожидающая команда управления отменена.");
+            return;
+        }
+        if ("enable".equals(plan.type) || !WolfAccessibilityService.available()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Включить помощник приложений?")
+                    .setMessage("В Android нужно вручную включить специальную " +
+                            "возможность WOLF AI. Это чувствительное системное " +
+                            "разрешение: Android может предоставить приложению " +
+                            "возможность видеть интерфейсы других приложений. " +
+                            "WOLF не записывает экран, не читает пароли и " +
+                            "не хранит содержимое чужих экранов. " +
+                            "Поддерживается только одно подтверждённое " +
+                            "нажатие либо прокрутка с ограничением 45 секунд. " +
+                            "Отключить разрешение можно в настройках Android. " +
+                            "Если разрешение уже дано, просто вернись в чат.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Открыть настройки Android", (d,w) -> {
+                        try {
+                            startActivity(new Intent(
+                                    android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                        } catch (Exception error) {
+                            reply("Не удалось открыть настройки специальных возможностей.");
+                        }
+                    }).show();
+            return;
+        }
+        String action = "click".equals(plan.type) ?
+                "Нажать видимую кнопку «" + plan.label + "»" :
+                "Прокрутить один раз";
+        new AlertDialog.Builder(this)
+                .setTitle("Разрешить одно действие?")
+                .setMessage(action + ".\n\nПосле разрешения вручную " +
+                        "переключись в другое приложение не позднее 45 секунд. " +
+                        "WOLF попробует выполнить только это действие в " +
+                        "первом доступном стороннем приложении. " +
+                        "Действия в системных настройках, финансовых " +
+                        "приложениях, пароли и отправка данных запрещены. " +
+                        "Если кнопка не найдена однозначно, действие отменится.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Разрешить один раз", (d,w) -> {
+                    try { reply("🖱 " + WolfAccessibilityService.arm(
+                            plan.type, plan.label)); }
+                    catch (Exception error) {
+                        reply("Команда отклонена: " + error.getMessage());
+                    }
+                }).show();
     }
 
     private void runDevice(String instruction) {
