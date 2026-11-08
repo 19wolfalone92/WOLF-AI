@@ -247,7 +247,10 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
                 new String[]{match.toString()})) {
             while (c.moveToNext()) {
                 String body = c.getString(2);
-                Set<String> present = new HashSet<>(terms(body));
+                Set<String> present = new HashSet<>();
+                Matcher occurrences = Pattern.compile("[\\p{L}\\p{N}]{3,30}")
+                        .matcher(body.toLowerCase(Locale.ROOT));
+                while (occurrences.find()) present.add(occurrences.group());
                 int hits = 0;
                 for (String word : keywords) if (present.contains(word)) hits++;
                 // Penalise irrelevant long passages only slightly; prefer
