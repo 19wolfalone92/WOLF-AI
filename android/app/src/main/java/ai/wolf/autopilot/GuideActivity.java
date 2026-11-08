@@ -59,7 +59,7 @@ public final class GuideActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        TextView title = text("🐺 WOLF AI — инструкция", 26, white, true);
+        TextView title = text("🐺 Как работает WOLF AI — инструкция", 26, white, true);
         root.addView(title);
         TextView introduction = text("У тебя один главный экран — обычный чат. " +
                 "Не нужно искать кнопки: напиши или продиктуй просьбу. " +
