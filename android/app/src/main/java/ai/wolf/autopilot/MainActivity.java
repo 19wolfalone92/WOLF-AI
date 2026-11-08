@@ -310,6 +310,18 @@ public final class MainActivity extends Activity {
         add(dispatch, runsContainer, 0, 0);
 
 
+        LinearLayout agentInfo = card(page, "🤖 WOLF AGENT 6.0 — работает с задачами",
+                "Новый автономный движок: анализ → план → разрешённые инструменты → " +
+                "проверка результатов → диагностика → отчёт. " +
+                "Создай задачу ниже и нажми «Запустить Agent 6.0» в её карточке. " +
+                "Каждая отправка требует отдельного подтверждения; " +
+                "телефон можно закрыть после принятия GitHub.");
+        Button agentDocs = button("📘 Как работает агент и ограничения", false);
+        add(agentInfo, agentDocs, 0, 0);
+        agentDocs.setOnClickListener(v -> startActivity(new Intent(
+                Intent.ACTION_VIEW, Uri.parse(
+                "https://github.com/19wolfalone92/WOLF-AI/blob/main/docs/AGENT_6.md"))));
+
         LinearLayout cloud = card(page, "☁️ Бесплатные интеграции GitHub",
                 "Сборка Android APK, технический предпросмотр Studio и проверка бесплатных провайдеров.");
         cloudStatus = text("Статус GitHub ещё не проверен.", 13, MUTED, false);
@@ -362,7 +374,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Запустить", (dialog, button) ->
                         runTrustedWorkflow(GithubOperations.MISSIONS))
                 .show());
-        Button checkCloud = button("↻ Проверить 6 процессов GitHub", false);
+        Button checkCloud = button("↻ Проверить 7 процессов GitHub", false);
         add(cloud, checkCloud, 0, 7);
         checkCloud.setOnClickListener(v -> refreshTrustedWorkflows());
         backlogStatus = text("Очередь задач GitHub и Pull Requests пока не загружена.", 13, MUTED, false);
@@ -915,7 +927,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 5.0 • GGUF-модели • Миссии • Metricool", 12, MUTED, false);
+        TextView footer = text("WOLF AI 6.0 • Agent: план → действие → проверка → отчёт", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1044,7 +1056,8 @@ public final class MainActivity extends Activity {
             StringBuilder out = new StringBuilder();
             for (String kind : new String[]{
                     GithubOperations.APK, GithubOperations.REPAIR, GithubOperations.TRAIN,
-                    GithubOperations.MISSIONS, GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
+                    GithubOperations.MISSIONS, GithubOperations.AGENT,
+                    GithubOperations.STUDIO, GithubOperations.FREE_TESTS}) {
                 try {
                     out.append(GithubOperations.report(kind, secrets.load())).append("\n\n");
                 } catch (Exception error) {
@@ -1064,13 +1077,14 @@ public final class MainActivity extends Activity {
         showResult("Сверяю реальные запуски GitHub…");
         async(() -> {
             List<GithubApi.RunInfo> list = GithubApi.runs(secrets.load());
-            int reconciled = tasks.reconcile(list);
+            int reconciled = tasks.reconcile(list) + tasks.reconcileAgent(list);
             org.json.JSONObject info = new org.json.JSONObject();
             info.put("updated", reconciled);
             org.json.JSONArray rows = new org.json.JSONArray();
             for (GithubApi.RunInfo run : list) {
                 rows.put(new org.json.JSONObject()
-                        .put("id", run.id).put("name", run.name)
+                        .put("id", run.id).put("agent", run.agent)
+                        .put("name", run.name)
                         .put("status", run.status).put("conclusion", run.conclusion)
                         .put("url", run.url));
             }
@@ -1092,7 +1106,8 @@ public final class MainActivity extends Activity {
                     String status = row.getString("status");
                     String conclusion = row.getString("conclusion");
                     long runId = row.getLong("id");
-                    TextView item = text("● #" + runId + " • " + status +
+                    TextView item = text((row.optBoolean("agent") ? "🤖 Агент " : "● ") +
+                            "#" + runId + " • " + status +
                             " / " + conclusion + "\n" + row.optString("name"), 13,
                             "success".equals(conclusion) ? GREEN : ORANGE, false);
                     item.setBackground(shape(INPUT, 10));
@@ -1109,6 +1124,92 @@ public final class MainActivity extends Activity {
                 showResult("Ошибка разбора ответа GitHub: " + e.getMessage());
             }
         }, error -> showResult("Сверка не выполнена: " + error));
+    }
+
+    /** Explicit consent is needed before sending a task description to GitHub. */
+    private void launchAgent(TaskStore.Task task) {
+        boolean pending = TaskStore.AGENT_RESERVED.equals(task.agentStatus) ||
+                TaskStore.SUBMITTED.equals(task.agentStatus) ||
+                TaskStore.RUNNING.equals(task.agentStatus) ||
+                TaskStore.AGENT_UNKNOWN.equals(task.agentStatus);
+        if (pending) {
+            showResult("У задачи уже есть попытка агентного запуска: " +
+                    task.agentStatus + ". Обнови GitHub Actions и проверь возможный " +
+                    "неизвестный результат. Скрытые повторные отправки запрещены.");
+            updateRuns();
+            return;
+        }
+        if (GithubBacklog.suspectedSecret(task.text) ||
+                task.text.matches("(?is).*(?:private[ _-]?key|password\\s*[:=]|token\\s*[:=]).*")) {
+            showResult("Задача содержит возможный пароль/токен. " +
+                    "Не отправляй секреты в GitHub Actions.");
+            return;
+        }
+        boolean repairAllowed = "wolf".equals(task.project) && "test".equals(task.mode);
+        android.widget.CheckBox safeFix = new android.widget.CheckBox(this);
+        safeFix.setText("Разрешить безопасную Python-правку WOLF на временной копии " +
+                "(без коммита и публикации)");
+        safeFix.setTextColor(WHITE);
+        safeFix.setChecked(false);
+        String explanation = "🤖 ЭТАПЫ WOLF AI AGENT 6.0\n\n" +
+                "1. Анализ структуры репозитория.\n" +
+                "2. Выполнение разрешённых тестов/диагностики.\n" +
+                "3. Классификация ошибок по фактическим логам.\n" +
+                "4. Одна попытка восстановления только при временном сбое.\n" +
+                "5. Повторная проверка и рекомендации.\n" +
+                "6. Сохранение JSON-отчёта и патча (если разрешён).\n\n" +
+                "Проект: " + task.project + ", режим: " + task.mode + "\n\n" +
+                "Описание: " + task.text + "\n\n" +
+                "Оно отправится в GitHub Actions репозитория WOLF-AI, " +
+                "который является публичным. Не отправляй личные данные. " +
+                "Агент НЕ публикует видео, не торгует, не объединяет PR и " +
+                "не обещает исправить произвольные ошибки.";
+        android.app.AlertDialog.Builder prompt = new android.app.AlertDialog.Builder(this)
+                .setTitle("Разрешить отдельный запуск AI Agent 6.0?")
+                .setMessage(explanation)
+                .setNegativeButton("Отмена", null)
+                .setNeutralButton("🧠 Обсудить план с Qwen", (dialog, button) -> {
+                    showResult("Локальная Qwen анализирует возможный план…");
+                    String question = "Составь осторожный и короткий план проверки " +
+                            "проекта " + task.project + " по запросу: " + task.text +
+                            ". Не выдавай план за выполненные действия. " +
+                            "GitHub Agent запускает только фиксированные инструменты.";
+                    async(() -> EmbeddedAi.ask(getApplicationContext(), question,
+                                    java.util.Collections.emptyList()),
+                            value -> showResult("Локальное предложение (не исполнено):\n" + value),
+                            error -> showResult("Локальная модель недоступна: " + error));
+                })
+                .setPositiveButton("Разрешить одну миссию", (dialog, button) -> {
+                    final boolean fix = repairAllowed && safeFix.isChecked();
+                    showResult("Сохраняю резервирование, отправляю агентный запуск…");
+                    async(() -> {
+                        if (!tasks.reserveAgent(task.id, task.uid))
+                            throw new IllegalStateException("Задача уже выполняется или исход " +
+                                    "предыдущего запуска неизвестен. Проверь GitHub.");
+                        try {
+                            String answer = GithubApi.dispatchAgent(
+                                    task.project, task.mode, task.uid, task.text,
+                                    fix, secrets.load());
+                            tasks.acceptedAgent(task.id, task.uid);
+                            return answer;
+                        } catch (Exception e) {
+                            // A connection timeout can occur AFTER GitHub accepts it.
+                            // Keep the reservation and require manual reconciliation.
+                            tasks.unknownAgent(task.id, task.uid);
+                            throw e;
+                        }
+                    }, value -> {
+                        renderTasks();
+                        showResult(value);
+                        updateRuns();
+                    }, error -> {
+                        renderTasks();
+                        showResult("Неизвестный или неуспешный запуск: " + error +
+                                "\nНе повторяй до проверки GitHub Actions.");
+                    });
+                });
+        if (repairAllowed) prompt.setView(safeFix);
+        prompt.show();
     }
 
     private void publishTask(TaskStore.Task task) {
@@ -1441,6 +1542,33 @@ public final class MainActivity extends Activity {
                     "☁️ Отправить задачу в GitHub Issues", false);
             add(box, publish, 7, 0);
             publish.setOnClickListener(v -> publishTask(task));
+            String agentState = task.agentStatus == null ? TaskStore.AGENT_NONE :
+                    task.agentStatus;
+            String agentLabel = "🤖 Запустить Agent 6.0: план → тесты → диагноз";
+            if (!TaskStore.AGENT_NONE.equals(agentState)) {
+                String readable = TaskStore.SUCCESS.equals(agentState) ?
+                        "✓ проверки пройдены" :
+                        TaskStore.FAILURE.equals(agentState) ? "⚠ нужны исправления" :
+                        TaskStore.RUNNING.equals(agentState) ? "выполняется" :
+                        TaskStore.SUBMITTED.equals(agentState) ? "ожидается GitHub" :
+                        "результат неопределён, проверь Actions";
+                add(box, text("🤖 Агент: " + readable +
+                        (task.agentRunId > 0 ? " • #" + task.agentRunId : ""),
+                        12, TaskStore.SUCCESS.equals(agentState) ? GREEN : ORANGE,
+                        false), 5, 5);
+                agentLabel = "↻ Проверить / повторить Agent после результата";
+            }
+            Button startAgent = button(agentLabel, true);
+            add(box, startAgent, 7, 0);
+            startAgent.setOnClickListener(v -> launchAgent(task));
+            if (task.agentRunId > 0) {
+                Button agentArtifact = button("📦 Открыть отчёт Agent в GitHub", false);
+                add(box, agentArtifact, 5, 0);
+                agentArtifact.setOnClickListener(v -> startActivity(new Intent(
+                        Intent.ACTION_VIEW, Uri.parse(
+                        "https://github.com/19wolfalone92/WOLF-AI/actions/runs/" +
+                        task.agentRunId))));
+            }
             if (task.issueNumber > 0) {
                 Button authorize = button("🐺 Одобрить автоматическую миссию", true);
                 add(box, authorize, 7, 0);
