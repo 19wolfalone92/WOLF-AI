@@ -80,6 +80,19 @@ public final class LocalToolAgent {
         }
         if (github) {
             try {
+                String repository = GithubRepoInspector.selectedRepo(question);
+                String actual = GithubRepoInspector.inspect(repository, token);
+                context.append("VERIFIED GITHUB CODE TREE:\n")
+                        .append(actual.substring(0, Math.min(actual.length(), 1100)))
+                        .append("\n");
+                trace.append("2a. Репозиторий ").append(repository)
+                        .append(": структура прочитана через GitHub API.\n");
+            } catch (Exception error) {
+                context.append("GITHUB CODE: repository source unavailable.\n");
+                trace.append("2a. Структура репозитория недоступна (")
+                        .append(error.getClass().getSimpleName()).append(").\n");
+            }
+            try {
                 String evidence = githubEvidence(token);
                 context.append("GITHUB EVIDENCE:\n").append(evidence).append("\n");
                 trace.append("2. GitHub Actions: прочитаны реальные запуски.\n");
