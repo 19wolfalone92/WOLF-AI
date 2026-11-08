@@ -2,11 +2,14 @@ package ai.wolf.autopilot;
 
 import android.accessibilityservice.AccessibilityService;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import java.util.ArrayDeque;
-import java.util.Locale;
+import java.util.List;
+import java.util.Collections;
 
 /**
  * Explicit, one-shot Android Accessibility actions on a foreground
@@ -23,11 +26,19 @@ public final class WolfAccessibilityService extends AccessibilityService {
     private volatile Request pending;
     private volatile String lastResult = "Ожидание команды.";
 
+    private final Handler main = new Handler(Looper.getMainLooper());
+
     static final class Request {
         final String type, target;
         final long expires;
+        final List<String> labels;
+        int step;
+        long lastClickMillis;
+        String lockedPackage;
         Request(String type, String target, long expires) {
             this.type = type; this.target = target; this.expires = expires;
+            this.labels = "sequence".equals(type) ?
+                    BrowserFlowPlan.parse(target) : Collections.singletonList(target);
         }
     }
 
@@ -37,7 +48,7 @@ public final class WolfAccessibilityService extends AccessibilityService {
     public static String arm(String type, String target) {
         WolfAccessibilityService svc = connected;
         if (svc == null) return "Служба Android недоступна: включи WOLF в настройках специальных возможностей.";
-        if (!(type.equals("click") || type.equals("scroll")))
+        if (!(type.equals("click") || type.equals("scroll") || type.equals("sequence")))
             throw new IllegalArgumentException("Недопустимое действие.");
         if (type.equals("click") && !AssistivePolicy.allowedLabel(target))
             throw new IllegalArgumentException("Опасная или слишком общая кнопка заблокирована.");
@@ -47,8 +58,11 @@ public final class WolfAccessibilityService extends AccessibilityService {
         svc.pending = new Request(type, target,
                 SystemClock.elapsedRealtime() + LIFETIME_MS);
         return "Команда активирована на 45 секунд. Перейди вручную в нужное приложение. " +
-                "WOLF выполнит ровно одно действие, если найдёт однозначный элемент. " +
-                "Никаких дальнейших действий без нового подтверждения.";
+                ("sequence".equals(type) ?
+                        "WOLF выполнит максимум четыре заранее указанных безопасных шага " +
+                                "только в одном приложении, при однозначных совпадениях." :
+                        "WOLF выполнит не более одного подтверждённого действия.") +
+                " Никаких других операций без нового согласия.";
     }
 
     public static String status() {
@@ -78,21 +92,30 @@ public final class WolfAccessibilityService extends AccessibilityService {
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
+        if (event != null) attemptPending();
+    }
+
+    private void attemptPending() {
         Request request = pending;
-        if (request == null || event == null) return;
-        if (SystemClock.elapsedRealtime() > request.expires) {
+        if (request == null) return;
+        long now = SystemClock.elapsedRealtime();
+        if (now > request.expires) {
             pending = null;
-            lastResult = "Время ожидания истекло.";
+            lastResult = "Время ожидания истекло. Маршрут остановлен.";
             return;
         }
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null || root.getPackageName() == null) return;
         String app = root.getPackageName().toString();
+        if (request.lockedPackage != null &&
+                !request.lockedPackage.equals(app)) {
+            pending = null;
+            lastResult = "Маршрут прерван: приложение сменилось.";
+            return;
+        }
         if (!AssistivePolicy.allowedPackage(app, getPackageName())) return;
-        // Clear before attempting the write. Repeated accessibility events
-        // must NEVER cause double taps / multiple scrolls.
-        pending = null;
         if ("scroll".equals(request.type)) {
+            pending = null; // Never repeat a scroll event.
             AccessibilityNodeInfo scroll = findScrollable(root);
             lastResult = scroll != null &&
                     scroll.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
@@ -100,15 +123,40 @@ public final class WolfAccessibilityService extends AccessibilityService {
                     : "Прокрутка не выполнена: подходящий элемент не найден.";
             return;
         }
-        AccessibilityNodeInfo hit = findUniqueClickable(root, request.target);
+        if (request.step > 0 && now - request.lastClickMillis < 800L) return;
+        String label = request.labels.get(request.step);
+        AccessibilityNodeInfo hit = findUniqueClickable(root, label);
         if (hit == null) {
-            lastResult = "Не выполнено: кнопка не найдена или неоднозначна.";
+            if ("click".equals(request.type)) {
+                pending = null;
+                lastResult = "Не выполнено: кнопка не найдена или неоднозначна.";
+            }
+            // In a preapproved route the page may still be loading; stay
+            // pending only until 45-second TTL, never widen to another app.
             return;
         }
-        boolean clicked = hit.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-        lastResult = clicked ? "✅ Один клик выполнен в " + app +
-                ". Проверь результат в приложении." :
-                "Android не разрешил выполнить нажатие.";
+        if (request.lockedPackage == null) request.lockedPackage = app;
+        // Advance before triggering events to guarantee at-most-once taps.
+        request.step++;
+        request.lastClickMillis = now;
+        if (!hit.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            pending = null;
+            lastResult = "Android не разрешил нажатие. Маршрут остановлен.";
+            return;
+        }
+        if (request.step >= request.labels.size()) {
+            pending = null;
+            lastResult = "✅ Выполнено " + request.step + " подтверждённых нажатий в " +
+                    app + ". Проверь результат вручную.";
+        } else {
+            lastResult = "✅ Шаг " + request.step + "/" + request.labels.size() +
+                    " в " + app + ". Ищу следующий безопасный элемент...";
+            // A single delayed attempt covers pages that do not emit a
+            // content-change event. Other events may also drive progression.
+            main.postDelayed(() -> {
+                if (pending == request) attemptPending();
+            }, 900L);
+        }
     }
 
     private static AccessibilityNodeInfo findUniqueClickable(
