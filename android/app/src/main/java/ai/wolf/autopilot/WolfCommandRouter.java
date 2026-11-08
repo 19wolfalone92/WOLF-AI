@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, DEVICE, PROJECT_TASK, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -59,6 +59,15 @@ public final class WolfCommandRouter {
             if (contains(q, "открой браузер", "открой интернет"))
                 query = "";
             return new Decision(Kind.WEB_SEARCH, query, "Поиск в браузере.");
+        }
+        if (contains(q, "опубликуй видео", "опубликуй ролик",
+                "выложи видео", "выложи ролик", "запости видео",
+                "запланируй публикацию", "загрузи ролик в тикток",
+                "сделай видео", "создай видео", "собери видеоролик",
+                "настрой metricool", "подключи metricool",
+                "открой инструменты", "открой студию",
+                "подключи гитхаб", "настрой github")) {
+            return new Decision(Kind.TOOLS, text, "Открыть настройки и видеостудию.");
         }
         if (contains(q, "настройки телефона", "открой настройки", "настройки вайфай",
                 "настройки wi-fi", "настройки bluetooth", "настройки блютуз",
