@@ -47,6 +47,16 @@ jobs:
             tests/java/WolfCommandRouterTest.java
           java -ea -cp "$RUNNER_TEMP/wolf-chat-tests" \
             ai.wolf.autopilot.WolfCommandRouterTest
+      - name: Test actual web search result parser on JVM (no internet needed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-search-tests"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-search-tests" \
+            android/app/src/main/java/ai/wolf/autopilot/WebSearchService.java \
+            tests/java/WebSearchServiceTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-search-tests" \
+            ai.wolf.autopilot.WebSearchServiceTest
       - name: Verify REAL WOLF workspace backup encryption on JVM
         shell: bash
         run: |
