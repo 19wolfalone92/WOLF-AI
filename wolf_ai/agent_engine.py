@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from wolf_ai.orchestrator import PROJECTS, atomic_json, clean_log, recipes, run
+from wolf_ai.orchestrator import PROJECTS, atomic_json, recipes, run
 
 MAX_GOAL = 600
 MAX_FILES = 2500
@@ -159,9 +159,9 @@ def execute(plan: Plan, source: Path, output: Path, *, budget_seconds: int = 750
     if plan.safe_fix and not allow_safe_fix:
         raise AgentError("Safe fix needs a separate explicit approval")
     # Do not silently allow an unexpected plan structure or different mode.
-    if plan != make_plan(plan.project, plan.mode, "dummy", safe_fix=plan.safe_fix).__class__(
-            plan.project, plan.mode, plan.goal_sha256,
-            plan.steps, plan.safe_fix):
+    expected_steps = make_plan(plan.project, plan.mode, "valid dummy goal",
+                               safe_fix=plan.safe_fix).steps
+    if plan.steps != expected_steps:
         raise AgentError("Plan steps have been modified outside the allowlist")
     if not re.fullmatch(r"[a-f0-9]{64}", plan.goal_sha256):
         raise AgentError("Invalid goal digest")
