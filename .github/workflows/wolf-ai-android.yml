@@ -67,6 +67,19 @@ jobs:
             tests/java/MetricoolBatchParserTest.java
           java -ea -cp "$RUNNER_TEMP/wolf-batch-tests" \
             ai.wolf.autopilot.MetricoolBatchParserTest
+      - name: Test real assisted navigation policy on JVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-ui-tests"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-ui-tests" \
+            android/app/src/main/java/ai/wolf/autopilot/AssistivePolicy.java \
+            android/app/src/main/java/ai/wolf/autopilot/AssistiveCommandParser.java \
+            android/app/src/main/java/ai/wolf/autopilot/BrowserActionPolicy.java \
+            android/app/src/main/java/ai/wolf/autopilot/WolfCommandRouter.java \
+            tests/java/AssistedNavigationTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-ui-tests" \
+            ai.wolf.autopilot.AssistedNavigationTest
       - name: Verify REAL WOLF workspace backup encryption on JVM
         shell: bash
         run: |
