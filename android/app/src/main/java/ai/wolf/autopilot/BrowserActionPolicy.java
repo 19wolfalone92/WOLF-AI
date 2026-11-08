@@ -5,7 +5,7 @@ import java.util.Locale;
 
 /**
  * Deterministic, non-credential DOM navigation. Does not expose a model
- * driven JavaScript runner or inspect passwords/forms/cookies/localStorage.
+ * driven JavaScript runner or inspect passwords, forms, cookies or browser storage.
  */
 public final class BrowserActionPolicy {
     private BrowserActionPolicy() {}
