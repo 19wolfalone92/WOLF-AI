@@ -61,7 +61,6 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertIn('!permitted(repoName)', source)
         self.assertIn('con.setRequestMethod("GET")', source)
         self.assertIn("GitHub source inspection HTTP", source)
-        self.assertIn("tree + ", source.replace('"/git/trees/" + branch', '"tree + "')) if False else None
         self.assertIn("?recursive=1", source)
         self.assertNotIn("con.setRequestMethod(\"POST\")", source)
         self.assertNotIn("con.setDoOutput(true)", source)
