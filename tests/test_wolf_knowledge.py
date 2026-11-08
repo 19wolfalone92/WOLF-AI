@@ -48,10 +48,10 @@ class KnowledgeReleaseContracts(unittest.TestCase):
     def test_agent_uses_local_sources_without_uploading_notes(self):
         source = (JAVA / "LocalToolAgent.java").read_text("utf-8")
         self.assertIn("documents.search(question, 2)", source)
-        self.assertIn("KnowledgeBase.context(excerpts, 800)", source)
+        self.assertIn("KnowledgeBase.context(excerpts, (github || wiki) ? 400 : 800)", source)
         self.assertIn("EmbeddedAi.ask(app, task, chat, references)", source)
         self.assertIn("GithubRepoInspector.inspect(repository, token)", source)
-        self.assertIn('context.toString().substring(0, Math.min(context.length(), 1300))', source)
+        self.assertIn('context.toString().substring(0, Math.min(context.length(), 1750))', source)
         self.assertNotIn('Runtime.getRuntime().exec', source)
         # Generic bug-fixing prompts must not trigger an unrelated
         # Wikimedia search leaking potentially private description.
