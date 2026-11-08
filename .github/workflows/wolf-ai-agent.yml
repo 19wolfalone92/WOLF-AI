@@ -2,6 +2,13 @@ name: WOLF AI — Agent v6 (Plan / Act / Verify)
 run-name: "WOLF agent ${{ inputs.project || 'wolf' }} ${{ inputs.mode || 'test' }} ${{ inputs.client_task_id || 'PR-smoke' }}"
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'wolf_ai/agent_engine.py'
+      - 'wolf_ai/missions.py'
+      - 'tests/test_wolf_agent*.py'
+      - '.github/workflows/wolf-ai-agent.yml'
   workflow_dispatch:
     inputs:
       project:
@@ -58,6 +65,36 @@ jobs:
           python-version: '3.11'
       - name: Agent and existing WOLF regression suite
         run: python -B -m unittest discover -s tests -p 'test_wolf*.py' -v
+
+  main-agent-validation:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Execute REAL bounded WOLF self-test agent on trusted main
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/agent-main-check"
+          python -B -m wolf_ai.agent_engine \
+            --project wolf --mode test \
+            --goal "WOLF 6 release validation: execute safe self-checks and verify evidence" \
+            --source . --output "$RUNNER_TEMP/agent-main-check/agent_report.json" \
+            --budget-seconds 350
+      - name: Persist actual main agent evidence including failure cases
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wolf-agent-verified-main-${{ github.run_id }}
+          path: ${{ runner.temp }}/agent-main-check/
+          retention-days: 21
+          if-no-files-found: warn
 
   approved-agent:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.repository == '19wolfalone92/WOLF-AI'
