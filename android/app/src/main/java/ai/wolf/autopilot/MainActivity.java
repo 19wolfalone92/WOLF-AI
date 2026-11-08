@@ -37,6 +37,8 @@ public final class MainActivity extends Activity {
     private static final int IMPORT_DOCUMENT = 6170;
     private static final int EXPORT_KNOWLEDGE_ENCRYPTED = 6171;
     private static final int IMPORT_KNOWLEDGE_ENCRYPTED = 6172;
+    private static final int EXPORT_WORKSPACE_ENCRYPTED = 6173;
+    private static final int IMPORT_WORKSPACE_ENCRYPTED = 6174;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -798,6 +800,24 @@ public final class MainActivity extends Activity {
         Button restoreKb = button("🔓 Восстановить библиотеку из .wolfkb", false);
         add(docs, restoreKb, 0, 8);
         restoreKb.setOnClickListener(v -> chooseKnowledgePassword(true));
+        Button workspaceExport = button(
+                "🔐 Сохранить ВСЮ личную среду (.wolfpack)", true);
+        add(docs, workspaceExport, 0, 8);
+        workspaceExport.setOnClickListener(v -> chooseKnowledgePassword(false, true));
+        Button workspaceRestore = button(
+                "🔓 Восстановить ВСЮ личную среду (.wolfpack)", false);
+        add(docs, workspaceRestore, 0, 8);
+        workspaceRestore.setOnClickListener(v -> chooseKnowledgePassword(true, true));
+        add(docs, text("НОВОЕ: полный зашифрованный .wolfpack сохраняет " +
+                "документы, изученные факты, локальный чат и журнал задач. " +
+                "Не передаёт GitHub/Metricool токены или GGUF. " +
+                "Перед переустановкой APK обязательно сохрани файл и пароль. " +
+                "Восстановление меняет четыре отдельные SQLite-базы: " +
+                "каждая транзакционная, но совместная операция между БД " +
+                "не гарантированно атомарна; при ошибке выполняется откат " +
+                "из снимков, который тоже может завершиться неуспешно. " +
+                "Сохраняй исходный зашифрованный архив.",
+                12, ORANGE, false), 4, 8);
         add(docs, text("AES-256-GCM + PBKDF2: копия переносится между " +
                 "переустановками и телефонами. Пароль от 12 символов, " +
                 "не хранится в приложении. БЕЗ ПАРОЛЯ ВОССТАНОВИТЬ НЕЛЬЗЯ. " +
@@ -1174,7 +1194,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 8.0 • PDF / DOCX • Зашифрованная память • Agent", 12, MUTED, false);
+        TextView footer = text("WOLF AI 9.0 • Полная переносимая память • PDF • Agent", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1640,6 +1660,10 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseKnowledgePassword(boolean restoring) {
+        chooseKnowledgePassword(restoring, false);
+    }
+
+    private void chooseKnowledgePassword(boolean restoring, boolean workspace) {
         android.widget.EditText password = new android.widget.EditText(this);
         password.setHint("Пароль (12+ символов)");
         password.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
@@ -1659,13 +1683,21 @@ public final class MainActivity extends Activity {
         new android.app.AlertDialog.Builder(this)
                 .setTitle(restoring ? "Открыть зашифрованную копию" :
                         "Зашифровать резервную копию")
-                .setMessage(restoring ?
+                .setMessage(workspace ?
+                        (restoring ?
+                        "Введи пароль .wolfpack и выбери файл. После проверки " +
+                        "будет предложена ЗАМЕНА документов, изученной памяти, " +
+                        "чата и журнала задач. Токены остаются на телефоне." :
+                        "Пароль от 12 символов. Полный .wolfpack сохранит " +
+                        "документы, обучающие примеры, чат и журнал задач, " +
+                        "но НЕ токены, APK и скачанные GGUF.") :
+                        (restoring ?
                         "Введи пароль от созданного ранее .wolfkb. После выбора " +
                         "файла потребуется подтвердить ЗАМЕНУ документов. " +
                         "Ошибочный пароль не удалит текущую библиотеку." :
                         "Придумай пароль минимум из 12 символов и сохрани " +
                         "его отдельно. В копию войдут все индексированные " +
-                        "документы, но не GitHub PAT и не история чата.")
+                        "документы, но не GitHub PAT и не история чата."))
                 .setView(form)
                 .setNegativeButton("Отмена", (dialog, button) -> {
                     password.setText("");
@@ -1694,14 +1726,61 @@ public final class MainActivity extends Activity {
                             Intent.FLAG_GRANT_READ_URI_PERMISSION :
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                     if (!restoring)
-                        picker.putExtra(Intent.EXTRA_TITLE, "wolf-knowledge.wolfkb");
-                    startActivityForResult(picker, restoring ?
-                            IMPORT_KNOWLEDGE_ENCRYPTED : EXPORT_KNOWLEDGE_ENCRYPTED);
+                        picker.putExtra(Intent.EXTRA_TITLE, workspace ?
+                                "wolf-workspace.wolfpack" : "wolf-knowledge.wolfkb");
+                    startActivityForResult(picker, workspace ?
+                            (restoring ? IMPORT_WORKSPACE_ENCRYPTED :
+                                    EXPORT_WORKSPACE_ENCRYPTED) :
+                            (restoring ? IMPORT_KNOWLEDGE_ENCRYPTED :
+                                    EXPORT_KNOWLEDGE_ENCRYPTED));
                 }).show();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_WORKSPACE_ENCRYPTED ||
+                requestCode == IMPORT_WORKSPACE_ENCRYPTED) {
+            final char[] password = temporaryKnowledgePassword;
+            temporaryKnowledgePassword = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null ||
+                    password == null) {
+                if (password != null) java.util.Arrays.fill(password, '\0');
+                return;
+            }
+            final Uri selected = data.getData();
+            if (requestCode == EXPORT_WORKSPACE_ENCRYPTED) {
+                knowledgeStatus.setText("Создаю зашифрованную копию личной среды…");
+                async(() -> WolfWorkspaceBackup.exportEncrypted(
+                                getApplicationContext(), knowledge, learning,
+                                chat, tasks, selected, password),
+                        result -> knowledgeStatus.setText(result),
+                        error -> knowledgeStatus.setText("Экспорт не выполнен: " + error));
+            } else {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Заменить личные данные из .wolfpack?")
+                        .setMessage("После проверки пароля и полного архива WOLF " +
+                                "попытается заменить ВСЕ ЧЕТЫРЕ базы: документы, " +
+                                "факты обучения, историю чата и журнал задач. " +
+                                "Это не обновит токены и GGUF. " +
+                                "При ошибке приложение попытается вернуть прежние " +
+                                "базы из временных снимков. Сохрани исходный .wolfpack.")
+                        .setNegativeButton("Не заменять", (d, w) ->
+                                java.util.Arrays.fill(password, '\0'))
+                        .setPositiveButton("Проверить и восстановить", (d, w) -> {
+                            knowledgeStatus.setText("Проверяю шифрование и данные .wolfpack…");
+                            async(() -> WolfWorkspaceBackup.restoreEncrypted(
+                                            getApplicationContext(), knowledge,
+                                            learning, chat, tasks, selected, password),
+                                    result -> {
+                                        knowledgeStatus.setText(result);
+                                        renderTasks();
+                                        refreshLearningStatus("Обучающая память восстановлена.");
+                                    }, error -> knowledgeStatus.setText(
+                                            "Восстановление отклонено: " + error));
+                        }).show();
+            }
+            return;
+        }
         if (requestCode == EXPORT_KNOWLEDGE_ENCRYPTED ||
                 requestCode == IMPORT_KNOWLEDGE_ENCRYPTED) {
             final char[] password = temporaryKnowledgePassword;
