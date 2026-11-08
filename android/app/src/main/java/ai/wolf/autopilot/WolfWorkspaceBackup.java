@@ -22,10 +22,6 @@ import java.util.zip.ZipOutputStream;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.spec.SecretKeySpec;
 
 /**
  * WOLF 9.0 portable personal workspace snapshot (without credentials).
@@ -38,27 +34,13 @@ import javax.crypto.spec.SecretKeySpec;
  * WARNING: Cross-database SQLite transactions are NOT globally atomic.
  */
 public final class WolfWorkspaceBackup {
-    private static final byte[] MAGIC = "WOLFWK9\n".getBytes(StandardCharsets.US_ASCII);
-    private static final int ITERATIONS = 240_000;
+    private static final byte[] MAGIC = WorkspaceCrypto.MAGIC;
     private static final int MAX_ZIP = 65_000_000;
     private static final int MAX_LIBRARY_JSON = 55_000_000;
     private static final String[] NAMES = {
             "library.json", "learning.json", "chat.json", "tasks.json"
     };
     private WolfWorkspaceBackup() {}
-
-    private static SecretKeySpec key(char[] passphrase, byte[] salt) throws Exception {
-        if (passphrase == null || passphrase.length < 12 || passphrase.length > 256)
-            throw new IllegalArgumentException("Пароль должен содержать 12–256 символов.");
-        PBEKeySpec spec = new PBEKeySpec(passphrase, salt, ITERATIONS, 256);
-        try {
-            byte[] material = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-                    .generateSecret(spec).getEncoded();
-            try {
-                return new SecretKeySpec(material, "AES");
-            } finally { Arrays.fill(material, (byte) 0); }
-        } finally { spec.clearPassword(); }
-    }
 
     private static void exact(InputStream in, byte[] target) throws IOException {
         int offset = 0;
@@ -98,10 +80,8 @@ public final class WolfWorkspaceBackup {
         random.nextBytes(salt);
         random.nextBytes(iv);
         try {
-            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE, key(passphrase, salt),
-                    new GCMParameterSpec(128, iv));
-            cipher.updateAAD(MAGIC);
+            Cipher cipher = WorkspaceCrypto.cipher(
+                    Cipher.ENCRYPT_MODE, passphrase, salt, iv);
             int documentCount;
             try (OutputStream output = context.getContentResolver()
                     .openOutputStream(destination, "w")) {
@@ -180,10 +160,8 @@ public final class WolfWorkspaceBackup {
                 byte[] salt = new byte[16], iv = new byte[12];
                 exact(sourceInput, salt);
                 exact(sourceInput, iv);
-                Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.DECRYPT_MODE, key(passphrase, salt),
-                        new GCMParameterSpec(128, iv));
-                cipher.updateAAD(MAGIC);
+                Cipher cipher = WorkspaceCrypto.cipher(
+                        Cipher.DECRYPT_MODE, passphrase, salt, iv);
                 // AES-GCM tag is verified completely before any DB writes.
                 try (CipherInputStream decrypted = new CipherInputStream(sourceInput, cipher);
                      FileOutputStream output = new FileOutputStream(ciphertext)) {
