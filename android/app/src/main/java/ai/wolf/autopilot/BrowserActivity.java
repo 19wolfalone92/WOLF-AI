@@ -211,7 +211,7 @@ public final class BrowserActivity extends Activity {
         LinearLayout helper = new LinearLayout(this);
         helper.setGravity(Gravity.CENTER_VERTICAL);
         root.addView(helper, new LinearLayout.LayoutParams(-1, dp(47)));
-        Button browserAssist = control("🤖 Навигация по кнопке");
+        Button browserAssist = control("🤖 Автомаршрут по сайту");
         helper.addView(browserAssist, new LinearLayout.LayoutParams(-1, dp(43)));
         browserAssist.setOnClickListener(v -> showAssistedNavigation());
 
@@ -270,78 +270,118 @@ public final class BrowserActivity extends Activity {
     }
 
     /**
-     * This is a user-directed action in the current WebView session.
-     * User logs in normally inside the browser; WOLF never sees passwords,
-     * cookies or form content. Every navigation requires a preview + consent.
+     * User-authenticated browsing uses WebView's own cookies only.
+     * Fixed same-origin navigation, no form reads/writes, no credential access.
+     * One explicit confirmation may authorize up to four navigation labels.
      */
     private void showAssistedNavigation() {
         if (page == null || !javascriptEnabled) {
-            status.setText("Для навигации включи JS для этой вкладки и войди на сайт вручную.");
+            status.setText("Включи JS в текущей вкладке и авторизуйся вручную.");
             return;
         }
-        final String expectedOrigin;
-        try { expectedOrigin = BrowserActionPolicy.safeOrigin(page.getUrl()); }
+        final String origin;
+        try { origin = BrowserActionPolicy.safeOrigin(page.getUrl()); }
         catch (Exception error) {
-            status.setText("Автоматизация запрещена на этой странице.");
+            status.setText("Автоматизация запрещена на этом сайте.");
             return;
         }
         EditText target = new EditText(this);
-        target.setSingleLine(true);
+        target.setSingleLine(false);
+        target.setMaxLines(4);
         target.setTextColor(TEXT);
         target.setHintTextColor(CYAN);
-        target.setHint("Точное название видимой кнопки или ссылки");
+        target.setHint("Например: Профиль > Настройки > Помощь");
         new AlertDialog.Builder(this)
                 .setTitle("🤖 Помощник сайта")
-                .setMessage("Сначала войди на сайт вручную. " +
-                        "WOLF может нажать только одну точно совпавшую " +
-                        "видимую кнопку или ссылку на текущем HTTPS-домене. " +
-                        "Он не читает пароли/куки, не заполняет формы, " +
-                        "не нажимает «Оплатить», «Отправить» или «Опубликовать».")
+                .setMessage("Войди на сайт вручную. Укажи до 4 точных названий " +
+                        "видимых безопасных ссылок/кнопок через «>». " +
+                        "WOLF не читает пароли и куки, не заполняет формы и не " +
+                        "публикует, не переводит деньги и не отправляет данные. " +
+                        "Последовательность работает только на одном HTTPS-домене. " +
+                        "При ошибке прекращается без повторов.")
                 .setView(target)
                 .setNegativeButton("Отмена", null)
-                .setPositiveButton("Найти элемент", (dialog, which) -> {
-                    String label = target.getText().toString().trim();
-                    try {
-                        String preview = BrowserActionPolicy.script(expectedOrigin, label, false);
-                        page.evaluateJavascript(preview, json -> {
-                            if (page == null || isFinishing()) return;
-                            if (!"ready:1".equals(responseString(json))) {
-                                status.setText("Не нашёл ровно одну безопасную кнопку с текстом «" +
-                                        label + "». Попробуй другое название.");
-                                return;
-                            }
-                            new AlertDialog.Builder(this)
-                                    .setTitle("Подтверди один клик")
-                                    .setMessage("Сайт: " + expectedOrigin +
-                                            "\nКнопка: «" + label + "»\n\n" +
-                                            "WOLF только вызовет один клик. " +
-                                            "Результат на сервере не подтверждён. " +
-                                            "На следующей странице новое действие " +
-                                            "потребует отдельного согласия.")
-                                    .setNegativeButton("Отмена", null)
-                                    .setPositiveButton("Нажать один раз", (d,w) -> {
-                                        if (page == null || !javascriptEnabled) return;
-                                        try {
-                                            page.evaluateJavascript(BrowserActionPolicy.script(
-                                                    expectedOrigin, label, true), result -> {
-                                                if (status == null) return;
-                                                String answer = responseString(result);
-                                                status.setText("click-invoked".equals(answer) ?
-                                                        "✓ Нажатие вызвано, результат проверь на сайте." :
-                                                        "Клик не выполнен: " + answer);
-                                            });
-                                        } catch (Exception error) {
-                                            status.setText("Действие заблокировано.");
-                                        }
-                                    }).show();
-                        });
-                    } catch (Exception error) {
-                        status.setText("Нельзя выполнить эту команду: " + error.getMessage());
+                .setPositiveButton("Проверить первый шаг", (dialog, which) -> {
+                    final java.util.List<String> labels;
+                    try { labels = BrowserFlowPlan.parse(target.getText().toString()); }
+                    catch (Exception error) {
+                        status.setText("Маршрут отклонён: " + error.getMessage());
+                        return;
                     }
+                    page.evaluateJavascript(BrowserActionPolicy.script(
+                            origin, labels.get(0), false), json -> {
+                        if (page == null || isFinishing()) return;
+                        if (!"ready:1".equals(responseString(json))) {
+                            status.setText("Первый пункт не найден однозначно. " +
+                                    "Ничего не выполнено.");
+                            return;
+                        }
+                        new AlertDialog.Builder(this)
+                                .setTitle(labels.size()==1 ?
+                                        "Подтверди один клик" : "Подтверди маршрут")
+                                .setMessage("Домен: " + origin +
+                                        "\nРазрешённые шаги: " + String.join(" → ", labels) +
+                                        "\n\nWOLF вызовет не более " + labels.size() +
+                                        " кликов, по очереди. Другие домены и " +
+                                        "отправка форм запрещены. При медленной загрузке " +
+                                        "может остановиться: проверь сайт вручную.")
+                                .setNegativeButton("Отмена", null)
+                                .setPositiveButton("Разрешаю маршрут", (d,w) -> {
+                                    long token = ++flowGeneration;
+                                    runWorkflowStep(labels, origin, 0, token);
+                                }).show();
+                    });
                 }).show();
     }
 
+    private long flowGeneration;
+
+    private void runWorkflowStep(java.util.List<String> labels, String origin,
+                                 int index, long token) {
+        if (token != flowGeneration || page == null || !javascriptEnabled ||
+                isFinishing() || isDestroyed()) return;
+        final String label = labels.get(index);
+        try {
+            page.evaluateJavascript(BrowserActionPolicy.script(origin, label, false),
+                    preview -> {
+                if (token != flowGeneration || page == null) return;
+                if (!"ready:1".equals(responseString(preview))) {
+                    status.setText("⛔ Шаг " + (index+1) + " не найден или домен изменился. " +
+                            "Маршрут остановлен; новых действий не было.");
+                    flowGeneration++;
+                    return;
+                }
+                page.evaluateJavascript(BrowserActionPolicy.script(origin, label, true),
+                        result -> {
+                    if (token != flowGeneration || page == null) return;
+                    if (!"click-invoked".equals(responseString(result))) {
+                        status.setText("⛔ Шаг " + (index+1) +
+                                " не выполнен. Маршрут остановлен.");
+                        flowGeneration++;
+                        return;
+                    }
+                    if (index+1 == labels.size()) {
+                        flowGeneration++;
+                        status.setText("✓ " + labels.size() + " кликов вызваны. " +
+                                "Проверь результат на сайте: серверный успех не доказан.");
+                    } else {
+                        status.setText("✓ Шаг " + (index+1) + " из " + labels.size() +
+                                ". Проверяю следующий...");
+                        // Short bounded delay for regular navigation. If the
+                        // next DOM is unavailable, fail closed rather than retry.
+                        page.postDelayed(() -> runWorkflowStep(labels, origin,
+                                index+1, token), 1800L);
+                    }
+                });
+            });
+        } catch (Exception error) {
+            flowGeneration++;
+            status.setText("Навигация остановлена: текущая страница недоступна.");
+        }
+    }
+
     private void navigate(String query) {
+        flowGeneration++;
         try {
             String target = resolve(query);
             status.setText("Загружаю защищённую страницу…");
@@ -356,7 +396,13 @@ public final class BrowserActivity extends Activity {
         else super.onBackPressed();
     }
 
+    @Override protected void onStop() {
+        flowGeneration++; // Never continue clicks in a hidden browser.
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
+        flowGeneration++;
         if (page != null) {
             page.stopLoading();
             page.removeAllViews();
