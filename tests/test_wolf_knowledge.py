@@ -41,6 +41,8 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertIn("documents.search(question, 3)", answer)
         self.assertIn("knowledge.deleteDocument", (JAVA / "MainActivity.java").read_text("utf-8"))
         self.assertIn("knowledge.clearAll", (JAVA / "MainActivity.java").read_text("utf-8"))
+        self.assertIn("GithubRepoInspector.readSource(", (JAVA / "MainActivity.java").read_text("utf-8"))
+        self.assertIn("sourceRepo.getSelectedItem()", (JAVA / "MainActivity.java").read_text("utf-8"))
 
     def test_agent_uses_local_sources_without_uploading_notes(self):
         source = (JAVA / "LocalToolAgent.java").read_text("utf-8")
@@ -66,6 +68,11 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertNotIn("con.setDoOutput(true)", source)
         self.assertIn("SAFE_REF.matcher(branch)", source)
         self.assertIn("decode(readme.optString", source)
+        self.assertIn("public static SourceExcerpt readSource", source)
+        self.assertIn("fromLine < 1 || fromLine > 12000", source)
+        self.assertIn("GithubBacklog.suspectedSecret(text)", source)
+        self.assertIn("item.optString(\"html_url\"", source)
+        self.assertIn('con.setRequestMethod("GET")', source)
 
 
 if __name__ == "__main__":
