@@ -61,8 +61,14 @@ public final class GithubRepoInspector {
     }
 
     private static JSONObject read(String path, String token, int max) throws Exception {
+        // NOTE: paths already start after OWNER in this helper; the only
+        // permitted query string is a fixed Git tree recursion flag.
+        boolean safeQuery = !path.contains("?") ||
+                (path.endsWith("?recursive=1") &&
+                 path.contains("/git/trees/") &&
+                 path.indexOf('?') == path.lastIndexOf('?'));
         if (!path.startsWith("/") || path.contains("..") ||
-                path.contains("//") || path.contains("?") ||
+                path.contains("//") || !safeQuery ||
                 path.contains("://") || path.contains("#"))
             throw new IllegalArgumentException("Invalid fixed GitHub API path");
         HttpURLConnection con = (HttpURLConnection) new URL(API + path.substring(1))
@@ -106,7 +112,7 @@ public final class GithubRepoInspector {
         String branch = metadata.optString("default_branch", "main");
         if (!SAFE_REF.matcher(branch).matches() || branch.contains(".."))
             throw new IllegalStateException("GitHub вернул недопустимое имя ветки.");
-        JSONObject tree = read("/" + repoName + "/git/trees/" + branch, token, 570000);
+        JSONObject tree = read("/" + repoName + "/git/trees/" + branch + "?recursive=1", token, 570000);
         JSONArray rows = tree.getJSONArray("tree");
         String sha = tree.optString("sha", "?");
         boolean incomplete = tree.optBoolean("truncated", false);
