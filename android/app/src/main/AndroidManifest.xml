@@ -33,6 +33,7 @@
         <activity android:name=".BrowserActivity" android:exported="false"
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".GuideActivity" android:exported="false" />
+        <activity android:name=".MetricoolBatchActivity" android:exported="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
