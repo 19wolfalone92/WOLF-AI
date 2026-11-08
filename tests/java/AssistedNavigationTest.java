@@ -28,6 +28,14 @@ public final class AssistedNavigationTest {
                 "target extraction");
         check(AssistiveCommandParser.parse("Пролистай приложение").type.equals("scroll"),
                 "scroll route");
+        check(AssistiveCommandParser.parse(
+                "Маршрут в приложении Профиль > Настройки").type.equals("sequence"),
+                "Android sequence recognized");
+        check(AssistiveCommandParser.parse(
+                "Маршрут в приложении Профиль > Настройки").label.equals(
+                        "Профиль > Настройки"), "exact step labels preserved");
+        check(WolfCommandRouter.route("Маршрут в приложении Профиль > Настройки").kind ==
+                WolfCommandRouter.Kind.UI_AUTOMATION, "route chat sequence");
         check(AssistiveCommandParser.parse("Отмени управление").type.equals("cancel"),
                 "cancel route");
         check(WolfCommandRouter.route("Нажми кнопку Профиль").kind ==
