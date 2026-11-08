@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -77,6 +77,16 @@ public final class WolfCommandRouter {
                 "подключи гитхаб", "настрой github")) {
             return new Decision(Kind.TOOLS, text, "Открыть настройки и видеостудию.");
         }
+        // Only user-spoken explicit actions, never autonomous model tool calls.
+        if (q.equals("управление приложениями") ||
+                q.equals("включи управление приложениями") ||
+                q.equals("статус управления") || q.equals("проверить управление") ||
+                q.equals("отмени управление") || q.equals("останови управление") ||
+                q.startsWith("нажми кнопку ") || q.startsWith("нажми в приложении ") ||
+                q.equals("пролистай приложение") || q.equals("прокрути приложение") ||
+                q.equals("пролистай вниз в приложении"))
+            return new Decision(Kind.UI_AUTOMATION, text,
+                    "Согласованное действие навигации в другом приложении.");
         if (contains(q, "настройки телефона", "открой настройки", "настройки вайфай",
                 "настройки wi-fi", "настройки bluetooth", "настройки блютуз",
                 "открой камеру", "открой галерею", "открой фотографии",
