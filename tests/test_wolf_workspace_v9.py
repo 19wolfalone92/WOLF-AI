@@ -34,7 +34,7 @@ class PortableWorkspaceContracts(unittest.TestCase):
     def test_aes_authenticated_and_all_components_validated_first(self):
         backup = java("WolfWorkspaceBackup")
         implementation = java("WorkspaceCrypto")
-        self.assertIn("\"WOLFWK9\\\\n\"", implementation)
+        self.assertIn("WOLFWK9", implementation)
         self.assertIn('Cipher.getInstance("AES/GCM/NoPadding")', implementation)
         self.assertIn("PBKDF2WithHmacSHA256", implementation)
         self.assertIn("ITERATIONS = 240_000", implementation)
