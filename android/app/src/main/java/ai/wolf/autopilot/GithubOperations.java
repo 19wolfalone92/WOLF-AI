@@ -25,6 +25,7 @@ public final class GithubOperations {
     public static final String REPAIR = "repair";
     public static final String TRAIN = "train";
     public static final String MISSIONS = "missions";
+    public static final String AGENT = "agent-v6";
 
     private GithubOperations() {}
 
@@ -36,12 +37,13 @@ public final class GithubOperations {
             case REPAIR: return "wolf-ai-repair.yml";
             case TRAIN: return "wolf-ai-train.yml";
             case MISSIONS: return "wolf-ai-missions.yml";
+            case AGENT: return "wolf-ai-agent.yml";
             default: throw new IllegalArgumentException("Запрещённый тип задания.");
         }
     }
 
     private static HttpURLConnection connect(String kind, String suffix, String method, String token) throws Exception {
-        URL url = new URL(((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind)) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
+        URL url = new URL(((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind) || AGENT.equals(kind)) ? WOLF_ROOT : STUDIO_ROOT) + "/workflows/" + workflow(kind) + suffix);
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
         c.setRequestMethod(method);
         c.setInstanceFollowRedirects(false);
@@ -69,6 +71,8 @@ public final class GithubOperations {
     }
 
     public static String dispatch(String kind, String token) throws Exception {
+        if (AGENT.equals(kind))
+            throw new IllegalArgumentException("Агент запускается только из конкретной задачи.");
         if (token == null || token.isEmpty())
             throw new IllegalStateException("Добавь в приложении GitHub PAT с Actions: Read and write.");
         HttpURLConnection c = connect(kind, "/dispatches", "POST", token);
@@ -121,7 +125,7 @@ public final class GithubOperations {
                 sb.append("#").append(id).append(" — ")
                         .append(r.optString("status", "?")).append(" / ")
                         .append(conclusion).append("\n")
-                        .append((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind)) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
+                        .append((APK.equals(kind) || REPAIR.equals(kind) || TRAIN.equals(kind) || MISSIONS.equals(kind) || AGENT.equals(kind)) ? WOLF_BROWSER : STUDIO_BROWSER).append(id).append("\n");
             }
             sb.append("APK/MP4/отчёты находятся в Artifacts соответствующего запуска.");
             return sb.toString();

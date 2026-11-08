@@ -20,20 +20,28 @@ public final class TaskStore extends SQLiteOpenHelper {
     public static final String RUNNING = "running";
     public static final String SUCCESS = "success";
     public static final String FAILURE = "failure";
+    public static final String AGENT_NONE = "none";
+    public static final String AGENT_RESERVED = "reserved";
+    public static final String AGENT_UNKNOWN = "dispatch_unknown";
     public static final class Task {
         public final long id;
         public final String text, project, mode, uid, status;
-        public final long created, runId, issueNumber;
+        public final long created, runId, issueNumber, agentRunId, agentSubmittedAt;
+        public final String agentStatus;
         public Task(long id, String text, String project, String mode,
-                    long created, String uid, String status, long runId, long issueNumber) {
+                    long created, String uid, String status, long runId, long issueNumber,
+                    String agentStatus, long agentRunId, long agentSubmittedAt) {
             this.id = id; this.text = text; this.project = project; this.mode = mode;
             this.created = created; this.uid = uid; this.status = status; this.runId = runId;
             this.issueNumber = issueNumber;
+            this.agentStatus = agentStatus;
+            this.agentRunId = agentRunId;
+            this.agentSubmittedAt = agentSubmittedAt;
         }
     }
 
     public TaskStore(Context context) {
-        super(context, "wolf_tasks.db", null, 3);
+        super(context, "wolf_tasks.db", null, 4);
     }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -43,7 +51,10 @@ public final class TaskStore extends SQLiteOpenHelper {
                 "mode TEXT NOT NULL, created INTEGER NOT NULL, " +
                 "task_uid TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'draft'," +
                 "run_id INTEGER NOT NULL DEFAULT 0," +
-                "issue_number INTEGER NOT NULL DEFAULT 0)");
+                "issue_number INTEGER NOT NULL DEFAULT 0," +
+                "agent_status TEXT NOT NULL DEFAULT 'none'," +
+                "agent_run_id INTEGER NOT NULL DEFAULT 0," +
+                "agent_submitted_at INTEGER NOT NULL DEFAULT 0)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -63,6 +74,11 @@ public final class TaskStore extends SQLiteOpenHelper {
         }
         if (oldVersion < 3) {
             db.execSQL("ALTER TABLE tasks ADD COLUMN issue_number INTEGER NOT NULL DEFAULT 0");
+        }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE tasks ADD COLUMN agent_status TEXT NOT NULL DEFAULT 'none'");
+            db.execSQL("ALTER TABLE tasks ADD COLUMN agent_run_id INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("ALTER TABLE tasks ADD COLUMN agent_submitted_at INTEGER NOT NULL DEFAULT 0");
         }
     }
 
@@ -91,12 +107,14 @@ public final class TaskStore extends SQLiteOpenHelper {
     public List<Task> recent() {
         ArrayList<Task> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-                "SELECT _id,body,project,mode,created,task_uid,status,run_id,issue_number " +
+                "SELECT _id,body,project,mode,created,task_uid,status,run_id,issue_number," +
+                "agent_status,agent_run_id,agent_submitted_at " +
                         "FROM tasks ORDER BY _id DESC LIMIT 30", null)) {
             while (cursor.moveToNext()) {
                 result.add(new Task(cursor.getLong(0), cursor.getString(1),
                         cursor.getString(2), cursor.getString(3), cursor.getLong(4),
-                        cursor.getString(5), cursor.getString(6), cursor.getLong(7), cursor.getLong(8)));
+                        cursor.getString(5), cursor.getString(6), cursor.getLong(7), cursor.getLong(8),
+                        cursor.getString(9), cursor.getLong(10), cursor.getLong(11)));
             }
         }
         return result;
@@ -115,7 +133,7 @@ public final class TaskStore extends SQLiteOpenHelper {
         for (Task task : recent()) {
             if (DRAFT.equals(task.status)) continue;
             for (GithubApi.RunInfo run : runs) {
-                if (!run.fromDispatch || !run.name.contains(task.uid)) continue;
+                if (run.agent || !run.fromDispatch || !run.name.contains(task.uid)) continue;
                 if (!run.name.contains(task.project) || !run.name.contains(task.mode)) continue;
                 // Never associate a job that predates task creation by >120 seconds.
                 if (run.createdEpochMillis > 0 && run.createdEpochMillis + 120000L < task.created) continue;
@@ -124,6 +142,62 @@ public final class TaskStore extends SQLiteOpenHelper {
                 ContentValues values = new ContentValues();
                 values.put("status", state);
                 values.put("run_id", run.id);
+                updated += db.update("tasks", values, "_id=? AND task_uid=?",
+                        new String[]{String.valueOf(task.id), task.uid});
+                break;
+            }
+        }
+        return updated;
+    }
+
+    /**
+     * Persist a reservation BEFORE any irreversible workflow_dispatch request.
+     * Only one unknown/in-progress attempt can exist per local task.
+     */
+    public boolean reserveAgent(long id, String uid) {
+        ContentValues values = new ContentValues();
+        values.put("agent_status", AGENT_RESERVED);
+        values.put("agent_run_id", 0);
+        values.put("agent_submitted_at", System.currentTimeMillis());
+        int updated = getWritableDatabase().update("tasks", values,
+                "_id=? AND task_uid=? AND agent_status IN ('none','success','failure')",
+                new String[]{String.valueOf(id), uid});
+        return updated == 1;
+    }
+
+    public void acceptedAgent(long id, String uid) {
+        ContentValues values = new ContentValues();
+        values.put("agent_status", SUBMITTED);
+        getWritableDatabase().update("tasks", values,
+                "_id=? AND task_uid=? AND agent_status='reserved'",
+                new String[]{String.valueOf(id), uid});
+    }
+
+    public void unknownAgent(long id, String uid) {
+        ContentValues values = new ContentValues();
+        values.put("agent_status", AGENT_UNKNOWN);
+        getWritableDatabase().update("tasks", values,
+                "_id=? AND task_uid=? AND agent_status='reserved'",
+                new String[]{String.valueOf(id), uid});
+    }
+
+    public int reconcileAgent(List<GithubApi.RunInfo> runs) {
+        int updated = 0;
+        SQLiteDatabase db = getWritableDatabase();
+        for (Task task : recent()) {
+            if (AGENT_NONE.equals(task.agentStatus)) continue;
+            for (GithubApi.RunInfo run : runs) {
+                if (!run.agent || !run.fromDispatch || !run.name.contains(task.uid) ||
+                        !run.name.contains(task.project) || !run.name.contains(task.mode))
+                    continue;
+                // Reject preexisting jobs. Timestamps are authoritative when supplied.
+                if (run.createdEpochMillis <= 0 ||
+                        run.createdEpochMillis + 5000L < task.agentSubmittedAt) continue;
+                String next = run.state();
+                if (run.id == task.agentRunId && next.equals(task.agentStatus)) break;
+                ContentValues values = new ContentValues();
+                values.put("agent_status", next);
+                values.put("agent_run_id", run.id);
                 updated += db.update("tasks", values, "_id=? AND task_uid=?",
                         new String[]{String.valueOf(task.id), task.uid});
                 break;

@@ -17,21 +17,23 @@ import java.util.List;
 public final class GithubApi {
     private static final String BASE = "https://api.github.com/repos/19wolfalone92/WOLF-AI";
     private static final String WORKFLOW = "/actions/workflows/wolf-ai-audit.yml";
+    private static final String AGENT_WORKFLOW = "/actions/workflows/wolf-ai-agent.yml";
     private static final String BROWSER_BASE =
             "https://github.com/19wolfalone92/WOLF-AI/actions/runs/";
 
     public static final class RunInfo {
         public final long id, createdEpochMillis;
         public final String name, status, conclusion, url;
-        public final boolean fromDispatch;
+        public final boolean fromDispatch, agent;
 
         public RunInfo(long id, String name, String status, String conclusion,
-                       boolean fromDispatch, long createdEpochMillis) {
+                       boolean fromDispatch, long createdEpochMillis, boolean agent) {
             this.id = id;
             this.name = name;
             this.status = status;
             this.conclusion = conclusion;
             this.fromDispatch = fromDispatch;
+            this.agent = agent;
             this.createdEpochMillis = createdEpochMillis;
             this.url = BROWSER_BASE + id;
         }
@@ -53,7 +55,7 @@ public final class GithubApi {
         con.setInstanceFollowRedirects(false);
         con.setRequestProperty("Accept", "application/vnd.github+json");
         con.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-        con.setRequestProperty("User-Agent", "WolfAI-Android/1.2");
+        con.setRequestProperty("User-Agent", "WolfAI-Android/6.0");
         if (token != null && !token.isEmpty())
             con.setRequestProperty("Authorization", "Bearer " + token);
         return con;
@@ -113,34 +115,80 @@ public final class GithubApi {
         return dispatch(project, mode, TaskStore.newUid(), token);
     }
 
-    public static List<RunInfo> runs(String token) throws Exception {
-        HttpURLConnection con = open(WORKFLOW + "/runs?per_page=50", "GET", token);
+    /** Agent goal is intentionally shared with GitHub only after explicit approval. */
+    public static String dispatchAgent(String project, String mode, String uid,
+                                       String goal, boolean safeFix, String token) throws Exception {
+        if (!CommandParser.validProject(project) ||
+                !("audit".equals(mode) || "test".equals(mode)) ||
+                uid == null || !uid.matches("w[a-f0-9]{32}") ||
+                goal == null || goal.trim().length() < 3 || goal.length() > 600)
+            throw new IllegalArgumentException("Недопустимые параметры агентной миссии.");
+        if (safeFix && !("wolf".equals(project) && "test".equals(mode)))
+            throw new IllegalArgumentException("Агент может исправлять Python только WOLF/test.");
+        if (GithubBacklog.suspectedSecret(goal) ||
+                goal.matches("(?is).*(?:private[ _-]?key|password\\s*[:=]|token\\s*[:=]).*"))
+            throw new IllegalArgumentException("В задании возможный секрет. GitHub не получает его.");
+        if (token == null || token.isEmpty())
+            throw new IllegalStateException("Нужен GitHub PAT — Actions: Read and write на WOLF-AI.");
+        HttpURLConnection con = open(AGENT_WORKFLOW + "/dispatches", "POST", token);
+        try {
+            JSONObject inputs = new JSONObject()
+                    .put("project", project).put("mode", mode)
+                    .put("goal", goal.trim()).put("client_task_id", uid)
+                    .put("safe_fix", safeFix ? "true" : "false");
+            JSONObject payload = new JSONObject().put("ref", "main").put("inputs", inputs);
+            con.setDoOutput(true);
+            con.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+            con.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream stream = con.getOutputStream()) { stream.write(bytes); }
+            int status = con.getResponseCode();
+            body(con);
+            if (status != 204)
+                throw new IllegalStateException("GitHub не подтвердил приём агентного запуска: HTTP " +
+                        status + ". Перед повтором проверь Actions.");
+            return "GitHub принял агентный запуск. Он ещё не завершён. " +
+                    "Обнови статусы и проверь отчёт в Artifacts.";
+        } finally {
+            con.disconnect();
+        }
+    }
+
+    private static List<RunInfo> runsFor(String workflow, String token, boolean agent)
+            throws Exception {
+        HttpURLConnection con = open(workflow + "/runs?per_page=50", "GET", token);
         try {
             int code = con.getResponseCode();
             String response = body(con);
             if (code != 200)
-                throw new IllegalStateException("Не удалось прочитать запуски (HTTP " + code + ").");
+                throw new IllegalStateException("Не удалось прочитать запуски " +
+                        (agent ? "Agent" : "Audit") + " (HTTP " + code + ").");
             JSONArray array = new JSONObject(response).getJSONArray("workflow_runs");
-            List<RunInfo> runs = new ArrayList<>();
+            List<RunInfo> result = new ArrayList<>();
             for (int i = 0; i < array.length() && i < 50; i++) {
                 JSONObject item = array.getJSONObject(i);
                 long timestamp = 0;
-                try {
-                    timestamp = Instant.parse(item.getString("created_at")).toEpochMilli();
-                } catch (Exception ignored) {
-                    // Better show a run without timestamp than fake its creation date.
-                }
-                runs.add(new RunInfo(item.getLong("id"),
-                        item.optString("display_title", "Проверка"),
+                try { timestamp = Instant.parse(item.getString("created_at")).toEpochMilli(); }
+                catch (Exception ignored) { /* Unknown time is not fabricated. */ }
+                result.add(new RunInfo(item.getLong("id"),
+                        item.optString("display_title", agent ? "AI Agent" : "Проверка"),
                         item.optString("status", "unknown"),
-                        item.isNull("conclusion") ? "pending" : item.optString("conclusion", "unknown"),
+                        item.isNull("conclusion") ? "pending" :
+                                item.optString("conclusion", "unknown"),
                         "workflow_dispatch".equals(item.optString("event", "")),
-                        timestamp));
+                        timestamp, agent));
             }
-            return runs;
-        } finally {
-            con.disconnect();
-        }
+            return result;
+        } finally { con.disconnect(); }
+    }
+
+    /** Real audit + agent runs, newest first; no assumption that dispatch completed. */
+    public static List<RunInfo> runs(String token) throws Exception {
+        List<RunInfo> combined = new ArrayList<>();
+        combined.addAll(runsFor(WORKFLOW, token, false));
+        combined.addAll(runsFor(AGENT_WORKFLOW, token, true));
+        combined.sort((a, b) -> Long.compare(b.createdEpochMillis, a.createdEpochMillis));
+        return combined.subList(0, Math.min(combined.size(), 70));
     }
 
     /** Human-readable evidence from GitHub's real job/step result API. */

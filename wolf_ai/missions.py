@@ -29,7 +29,8 @@ from wolf_ai.orchestrator import PROJECTS, atomic_json
 OWNER = "19wolfalone92"
 REPO = "WOLF-AI"
 BASE = "https://api.github.com/repos/" + OWNER + "/" + REPO
-WORKFLOW = "wolf-ai-audit.yml"
+WORKFLOW = "wolf-ai-agent.yml"
+LEGACY_AUDIT_WORKFLOW = "wolf-ai-audit.yml"
 BOT = "github-actions[bot]"
 MAX_ISSUES = 150
 MAX_COMMENTS = 100
@@ -58,6 +59,7 @@ class Mission:
     uid: str
     digest: str
     title: str
+    goal: str
 
     @property
     def approval_prefix(self) -> str:
@@ -93,11 +95,22 @@ def parse_issue(issue: dict[str, Any]) -> Mission | None:
         return None
     if not title.startswith("[WOLF TASK] " + project[0] + ":"):
         return None
+    # Only public Issue descriptions are forwarded as untrusted diagnostic
+    # context. The goal never becomes shell code or an arbitrary URL.
+    description = body.split("### Описание\n\n", 1)
+    if len(description) != 2:
+        return None
+    goal = description[1].split("\n\n> ВАЖНО:", 1)[0].strip()
+    if not 3 <= len(goal) <= 600:
+        return None
+    from wolf_ai.agent_engine import FORBIDDEN
+    if FORBIDDEN.search(goal):
+        return None
     # The digest binds the approval to the exact text, mode and project.
     return Mission(
         issue=number, project=project[0], mode=mode[0], uid=uid[0],
         digest=hashlib.sha256(body.encode("utf-8")).hexdigest(),
-        title=title[:120],
+        title=title[:120], goal=goal,
     )
 
 
@@ -195,21 +208,30 @@ class GitHub:
         self.request("POST", f"/issues/{issue_number}/comments", {"body": text})
 
     def dispatch_audit(self, mission: Mission) -> None:
+        # Compatibility name for the existing mission state machine.
+        # New work goes to the v6 agent, which executes only allowlisted tools.
         self.request("POST", f"/actions/workflows/{WORKFLOW}/dispatches", {
             "ref": "main",
             "inputs": {
                 "project": mission.project,
                 "mode": mission.mode,
                 "client_task_id": mission.uid,
+                "goal": mission.goal,
+                "safe_fix": "false",
             },
         })
 
     def recent_audits(self) -> list[dict]:
-        result = self.request(
-            "GET", f"/actions/workflows/{WORKFLOW}/runs?per_page=100")
-        if not isinstance(result, dict) or not isinstance(result.get("workflow_runs"), list):
-            raise MissionError("Workflow run list unavailable")
-        return result["workflow_runs"]
+        # Reconcile both new agent runs and previous v5 audit runs, without
+        # stranding reservations made before this upgrade.
+        runs = []
+        for workflow in (WORKFLOW, LEGACY_AUDIT_WORKFLOW):
+            result = self.request(
+                "GET", f"/actions/workflows/{workflow}/runs?per_page=100")
+            if not isinstance(result, dict) or not isinstance(result.get("workflow_runs"), list):
+                raise MissionError("Workflow run list unavailable")
+            runs.extend(result["workflow_runs"])
+        return sorted(runs, key=lambda item: item.get("created_at", ""), reverse=True)
 
 
 def _utc_epoch(value: str) -> float:
@@ -303,7 +325,7 @@ def run_once(api: GitHub, *, allow_dispatch: bool = False,
                                 f"{status} WOLF mission {mission.project}/{mission.mode}: "
                                 f"GitHub Actions **{state}**.\n" +
                                 f"Run: https://github.com/{OWNER}/{REPO}/actions/runs/{run_id}\n" +
-                                "Result is an audit report, not a code fix or a social post."
+                                "Result is a verified diagnostic agent report, not proof that the project is fixed or published."
                             )
                             if allow_dispatch:
                                 api.comment(mission.issue, comment)
