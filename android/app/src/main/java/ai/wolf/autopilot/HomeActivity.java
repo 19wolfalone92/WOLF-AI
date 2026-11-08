@@ -446,6 +446,9 @@ public final class HomeActivity extends Activity {
             case RESEARCH:
                 confirmResearch(command);
                 break;
+            case CLOUD_BROWSER:
+                confirmCloudBrowser(command);
+                break;
             case UI_AUTOMATION:
                 handleAssistive(command);
                 break;
@@ -535,6 +538,50 @@ public final class HomeActivity extends Activity {
                 .setPositiveButton("Исследовать", (d,w) ->
                         background(() -> ResearchReport.run(getApplicationContext(), subject)))
                 .show();
+    }
+
+    private void confirmCloudBrowser(String instruction) {
+        if (instruction.trim().equalsIgnoreCase("статус облачного браузера")) {
+            if (!secrets.configured()) {
+                reply("Нужен сохранённый GitHub PAT для чтения запусков. " +
+                        "Настрой его через ☰ → Дополнительные инструменты. " +
+                        "\n" + GithubCloudBrowser.RUNS);
+                return;
+            }
+            background(() -> GithubCloudBrowser.recent(secrets.load()));
+            return;
+        }
+        final CloudBrowserCommand.Plan plan;
+        try { plan = CloudBrowserCommand.parse(instruction); }
+        catch (Exception error) {
+            reply("Облачный браузер: " + error.getMessage());
+            return;
+        }
+        if (!secrets.configured()) {
+            reply("Чтобы запустить GitHub Actions, сначала подключи PAT " +
+                    "через ☰ → Дополнительные инструменты → Доступ к GitHub. " +
+                    "Никогда не отправляй токен в чат.");
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Запустить удалённый Chromium на GitHub?")
+                .setMessage("Публичный адрес: " + plan.url +
+                        "\nНавигация: " + (plan.steps.isEmpty() ?
+                                "только открыть и сделать снимок" : plan.steps) +
+                        "\n\nЗадача выполняется на временном CPU-раннере " +
+                        "GitHub Actions. Адрес и шаги могут быть видны в " +
+                        "истории публичного репозитория. Не отправляй " +
+                        "приватные ссылки, токены или личные данные. " +
+                        "В облаке НЕТ твоих браузерных cookies или входа " +
+                        "в аккаунты. WOLF сохранит только публичный " +
+                        "скриншот и ограниченный отчёт. GitHub может " +
+                        "ограничивать доступные бесплатные минуты. " +
+                        "Подтвердить запуск?")
+                .setNegativeButton("Отмена", (d,w) ->
+                        reply("Облачный браузер не запускался."))
+                .setPositiveButton("Запустить на GitHub", (d,w) ->
+                        background(() -> GithubCloudBrowser.dispatch(plan,
+                                secrets.load()))).show();
     }
 
     private boolean isGitHubQuestion(String question) {
