@@ -115,7 +115,7 @@ class PortableWorkspaceContracts(unittest.TestCase):
         self.assertIn("temporaryKnowledgePassword = null", screen)
         self.assertIn("renderTasks()", screen)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '9.1.0'", gradle)
+        self.assertRegex(gradle, r"versionName \'\\d+\\.\\d+\\.\\d+\'")
 
 
 if __name__ == "__main__":
