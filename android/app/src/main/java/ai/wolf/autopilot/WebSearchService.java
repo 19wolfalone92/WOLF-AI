@@ -1,12 +1,9 @@
 package ai.wolf.autopilot;
 
-import android.text.Html;
-import android.net.Uri;
-
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -80,9 +77,29 @@ public final class WebSearchService {
 
     private static String plain(String html) {
         if (html == null) return "";
-        String result = Html.fromHtml(html, Html.FROM_HTML_MODE_LEGACY)
-                .toString().replaceAll("[\\s\\u00a0]+", " ").trim();
-        return result.substring(0, Math.min(result.length(), 320));
+        // Small, bounded HTML text extractor, deliberately no browser,
+        // scripts, JavaScript or Android dependency. Named + numeric entities.
+        String result = html.replaceAll("(?is)<[^>]*>", " ")
+                .replace("&nbsp;", " ").replace("&amp;", "&")
+                .replace("&quot;", "\"").replace("&#39;", "'")
+                .replace("&apos;", "'").replace("&lt;", "<")
+                .replace("&gt;", ">");
+        Matcher decimal = Pattern.compile("&#([0-9]{1,7});").matcher(result);
+        StringBuffer converted = new StringBuffer();
+        while (decimal.find()) {
+            try {
+                int code = Integer.parseInt(decimal.group(1));
+                decimal.appendReplacement(converted, Matcher.quoteReplacement(
+                        Character.isValidCodePoint(code) ?
+                                new String(Character.toChars(code)) : " "));
+            } catch (Exception ignored) {
+                decimal.appendReplacement(converted, " ");
+            }
+        }
+        decimal.appendTail(converted);
+        String normalized = converted.toString()
+                .replaceAll("[\\s\\u00a0]+", " ").trim();
+        return normalized.substring(0, Math.min(320, normalized.length()));
     }
 
     private static String publicUrl(String raw) {
@@ -97,12 +114,13 @@ public final class WebSearchService {
             catch (Exception ignored) { return ""; }
         }
         try {
-            Uri uri = Uri.parse(candidate);
+            URI uri = new URI(candidate);
             if (!"https".equalsIgnoreCase(uri.getScheme()) ||
-                    uri.getHost() == null || uri.getUserInfo() != null ||
-                    uri.getPort() != -1 ||
-                    candidate.contains("\n") || candidate.contains("\r")) return "";
-            return candidate;
+                    uri.getHost() == null || uri.getRawUserInfo() != null ||
+                    uri.getPort() != -1 || uri.getHost().isEmpty() ||
+                    candidate.contains("\n") || candidate.contains("\r"))
+                return "";
+            return uri.toASCIIString();
         } catch (Exception ignored) {
             return "";
         }
