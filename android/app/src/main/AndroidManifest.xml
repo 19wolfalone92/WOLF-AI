@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Only for opt-in, foreground in-app voice conversation. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Android 11+ package visibility for optional user-triggered speech services. -->
     <queries>
         <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>

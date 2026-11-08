@@ -44,6 +44,7 @@ public final class HomeActivity extends Activity {
     private static final int VOICE = 9301;
     private static final int DOCUMENT = 9302;
     private static final int EXPORT_REPORT = 9303;
+    private static final int VOICE_MIC_PERMISSION = 9304;
     private static final int BG = Color.rgb(10, 15, 28);
     private static final int PANEL = Color.rgb(19, 29, 48);
     private static final int INPUT = Color.rgb(31, 45, 69);
@@ -60,6 +61,7 @@ public final class HomeActivity extends Activity {
     private TaskStore tasks;
     private SecureStore secrets;
     private SpeechCenter speaker;
+    private InAppVoiceDialog inAppVoice;
 
     private LinearLayout messages;
     private ScrollView conversationScroll;
@@ -126,11 +128,27 @@ public final class HomeActivity extends Activity {
         tasks = new TaskStore(this);
         secrets = new SecureStore(this);
         speaker = new SpeechCenter(this);
+        inAppVoice = new InAppVoiceDialog(this, new InAppVoiceDialog.Listener() {
+            @Override public void onListening() {
+                subtitle.setText("🎧 Слушаю твою команду…");
+            }
+            @Override public void onRecognized(String recognized) {
+                if (!voiceSession) return;
+                input.setText(recognized);
+                sendCurrent();
+            }
+            @Override public void onFailure(int code) {
+                if (!voiceSession) return;
+                stopVoiceSession();
+                subtitle.setText("● Голосовой режим остановлен (Android " +
+                        "speech error " + code + "). Нажми 🎧 для новой попытки.");
+            }
+        });
         // Conversational voice is opt-in and active only while the user
         // keeps this screen open; never listen in the background.
         speaker.setOnUtteranceDone(() -> {
             if (voiceSession && !busy && !speechListening &&
-                    !isFinishing() && !isDestroyed()) startSpeechRecognition();
+                    !isFinishing() && !isDestroyed()) startVoiceTurn();
         });
         buildHome();
         renderHistory();
@@ -256,7 +274,10 @@ public final class HomeActivity extends Activity {
         composer.addView(bottom, new LinearLayout.LayoutParams(-1, dp(46)));
         Button mic = button("🎙 Говорить", false);
         bottom.addView(mic, new LinearLayout.LayoutParams(0, dp(41), 1f));
-        mic.setOnClickListener(v -> startSpeechRecognition());
+        mic.setOnClickListener(v -> {
+            if (voiceSession) stopVoiceSession();
+            startSpeechRecognition(); // one-shot external recognizer, no mic permission needed
+        });
 
         voiceAnswer = button("🔈 Ответ вслух: выкл", false);
         LinearLayout.LayoutParams voiceSize = new LinearLayout.LayoutParams(0, dp(41), 1.25f);
@@ -281,8 +302,9 @@ public final class HomeActivity extends Activity {
                 voiceAnswer.setText("🔊 Ответ вслух: вкл");
                 refreshVoiceMode();
                 speaker.stop();
-                startSpeechRecognition();
+                startVoiceTurn();
             } else {
+                if (inAppVoice != null) inAppVoice.stop();
                 speaker.stop();
                 refreshVoiceMode();
             }
@@ -701,6 +723,43 @@ public final class HomeActivity extends Activity {
                         })).show();
     }
 
+    private void startVoiceTurn() {
+        if (!voiceSession || busy || isFinishing() || isDestroyed()) return;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO},
+                    VOICE_MIC_PERMISSION);
+            return;
+        }
+        try {
+            inAppVoice.start();
+            subtitle.setText(inAppVoice.usesOfflineEngine() ?
+                    "🎧 Слушаю на устройстве · без системного окна" :
+                    "🎧 Слушаю через Android · движок может использовать сеть");
+        } catch (Exception error) {
+            stopVoiceSession();
+            reply("Голосовой диалог на этом Android недоступен: " +
+                    error.getClass().getSimpleName() +
+                    ". Можно пользоваться разовым микрофоном.");
+        }
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] permissions,
+                                                      int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        if (code == VOICE_MIC_PERMISSION && voiceSession) {
+            if (results.length > 0 && results[0] ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                startVoiceTurn();
+            } else {
+                stopVoiceSession();
+                reply("Разрешение на микрофон не предоставлено. " +
+                        "WOLF не запускает скрытое распознавание. " +
+                        "Текстовый чат и разовый системный микрофон доступны.");
+            }
+        }
+    }
+
     private void startSpeechRecognition() {
         if (speechListening || busy || isFinishing() || isDestroyed()) return;
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -784,6 +843,7 @@ public final class HomeActivity extends Activity {
     private void stopVoiceSession() {
         voiceSession = false;
         refreshVoiceMode();
+        if (inAppVoice != null) inAppVoice.stop();
         if (speaker != null) speaker.stop();
     }
 
@@ -850,8 +910,15 @@ public final class HomeActivity extends Activity {
                 }).show();
     }
 
+    @Override protected void onStop() {
+        // No app switching, screen-off or background microphone operation.
+        if (voiceSession) stopVoiceSession();
+        super.onStop();
+    }
+
     @Override protected void onDestroy() {
         voiceSession = false;
+        if (inAppVoice != null) inAppVoice.close();
         worker.shutdownNow();
         if (speaker != null) speaker.close();
         if (chat != null) chat.close();
