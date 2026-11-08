@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
     private static final int IMPORT_LEARNING = 6141;
     private static final int IMPORT_GGUF = 6150;
     private static final int VOICE_INPUT = 6160;
+    private static final int IMPORT_DOCUMENT = 6170;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -57,6 +58,9 @@ public final class MainActivity extends Activity {
     private TaskStore tasks;
     private ChatStore chat;
     private LearningStore learning;
+    private KnowledgeBase knowledge;
+    private TextView knowledgeStatus;
+    private EditText deleteKnowledgeId;
     private MetricoolOAuth metricoolAuth;
     private MetricoolMcp metricoolMcp;
     private TextView metricoolStatus;
@@ -106,6 +110,7 @@ public final class MainActivity extends Activity {
         tasks = new TaskStore(this);
         chat = new ChatStore(this);
         learning = new LearningStore(this);
+        knowledge = new KnowledgeBase(this);
         speaker = new SpeechCenter(this);
         metricoolAuth = new MetricoolOAuth(this);
         metricoolMcp = new MetricoolMcp(this, metricoolAuth);
@@ -604,6 +609,74 @@ public final class MainActivity extends Activity {
                     error -> researchOutput.setText("ИИ не ответил: " + error));
         });
 
+        LinearLayout docs = card(page, "📖 Личная библиотека WOLF — RAG офлайн",
+                "Импортируй текстовые документы и исходники через файлы Android. " +
+                "WOLF индексирует их в приватной SQLite FTS-базе и найдёт " +
+                "подходящие фрагменты для ответа Qwen. Без облачных API и оплаты. " +
+                "PDF/DOCX-сканы пока не поддерживаются.");
+        knowledgeStatus = text("Индексировано документов: " + knowledge.documentCount(),
+                13, CYAN, false);
+        add(docs, knowledgeStatus, 5, 9);
+        Button importDoc = button("📂 Добавить файл в локальную библиотеку", true);
+        add(docs, importDoc, 0, 8);
+        importDoc.setOnClickListener(v -> {
+            Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            picker.addCategory(Intent.CATEGORY_OPENABLE);
+            picker.setType("*/*");
+            picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(picker, IMPORT_DOCUMENT);
+        });
+        Button viewDocs = button("🔎 Показать загруженные документы", false);
+        add(docs, viewDocs, 0, 8);
+        viewDocs.setOnClickListener(v -> {
+            knowledgeStatus.setText("Читаю локальную библиотеку…");
+            async(() -> knowledge.listDocuments(),
+                    value -> knowledgeStatus.setText(value),
+                    error -> knowledgeStatus.setText("Ошибка библиотеки: " + error));
+        });
+        deleteKnowledgeId = entry("Номер документа для удаления (например, 3)", false);
+        add(docs, deleteKnowledgeId, 0, 6);
+        Button deleteDoc = button("🗑 Удалить выбранный документ", false);
+        add(docs, deleteDoc, 0, 8);
+        deleteDoc.setOnClickListener(v -> {
+            final long number;
+            try { number = Long.parseLong(deleteKnowledgeId.getText().toString().trim()); }
+            catch (Exception error) {
+                knowledgeStatus.setText("Укажи числовой ID из списка документов.");
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Удалить документ №" + number + "?")
+                    .setMessage("Из локального индекса удалятся текст и все его фрагменты. " +
+                            "Исходный файл на телефоне не изменится.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Удалить", (dialog, button) ->
+                            async(() -> knowledge.deleteDocument(number) ?
+                                            "Документ удалён." : "Такого ID нет.",
+                                    value -> knowledgeStatus.setText(value + "\n" +
+                                            knowledge.listDocuments()),
+                                    error -> knowledgeStatus.setText("Ошибка: " + error)))
+                    .show();
+        });
+        Button clearDocs = button("⚠️ Очистить всю библиотеку документов", false);
+        add(docs, clearDocs, 0, 8);
+        clearDocs.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
+                .setTitle("Удалить все загруженные документы?")
+                .setMessage("Безвозвратно удалит ВСЕ проиндексированные документы, " +
+                        "но не исходные файлы. Личные факты и чат останутся.")
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Очистить библиотеку", (dialog, button) ->
+                        async(() -> { knowledge.clearAll(); return "Библиотека очищена."; },
+                                value -> knowledgeStatus.setText(value),
+                                error -> knowledgeStatus.setText("Ошибка: " + error)))
+                .show());
+        add(docs, text("До 30 файлов по 1,5 МБ: TXT, Markdown, CSV, JSON, SRT, " +
+                "текстовый код и другие UTF-8 форматы. Копия хранится в приватной " +
+                "базе приложения без шифрования отдельного файла. " +
+                "При удалении/переустановке APK данные могут исчезнуть — " +
+                "сохраняй оригиналы. Никакой фоновый поиск по устройству не ведётся.",
+                12, ORANGE, false), 4, 0);
+
         LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
                 "Сохраняй полезные факты и собственные примеры маршрутизации. " +
                 "Приложение учитывает их локально, без платного API. " +
@@ -888,8 +961,8 @@ public final class MainActivity extends Activity {
         ask.setOnClickListener(v -> {
             String question = questionInput.getText().toString().trim();
             aiOutput.setText("Думаю на процессоре телефона…");
-            async(() -> EmbeddedAi.ask(getApplicationContext(), question, chat.recent(8),
-                    learning.related(question, 3)), answer -> {
+            async(() -> DocumentAssistant.ask(getApplicationContext(), question,
+                    knowledge, learning, chat.recent(8)).text, answer -> {
                 chat.add("user", question);
                 chat.add("assistant", answer);
                 aiOutput.setText(answer);
@@ -972,7 +1045,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 6.0 • Agent: план → действие → проверка → отчёт", 12, MUTED, false);
+        TextView footer = text("WOLF AI 7.0 • Приватная библиотека • Агент • GitHub", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1485,6 +1558,32 @@ public final class MainActivity extends Activity {
                     }).show();
             return;
         }
+        if (requestCode == IMPORT_DOCUMENT) {
+            if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+            Uri source = data.getData();
+            final String name;
+            try { name = KnowledgeBase.displayName(this, source); }
+            catch (Exception error) {
+                knowledgeStatus.setText("Импорт отменён: " + error.getMessage());
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Индексировать «" + name + "»?")
+                    .setMessage("WOLF прочтёт только выбранный UTF-8 файл, разделит " +
+                            "на небольшие фрагменты и сохранит в локальной базе. " +
+                            "Текст не отправляется GitHub, Qwen Cloud или Metricool. " +
+                            "Система не сканирует остальные файлы устройства. " +
+                            "Для приватности не выбирай файлы с паролями.")
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Индексировать локально", (dialog, button) -> {
+                        knowledgeStatus.setText("Индексирую «" + name + "»…");
+                        async(() -> knowledge.importDocument(getApplicationContext(), source),
+                                result -> knowledgeStatus.setText(result + "\n" +
+                                        "Документов: " + knowledge.documentCount()),
+                                error -> knowledgeStatus.setText("Импорт отклонён: " + error));
+                    }).show();
+            return;
+        }
         if (requestCode == VOICE_INPUT) {
             if (resultCode == RESULT_OK && data != null) {
                 java.util.ArrayList<String> phrases = data.getStringArrayListExtra(
@@ -1639,6 +1738,7 @@ public final class MainActivity extends Activity {
         tasks.close();
         chat.close();
         learning.close();
+        if (knowledge != null) knowledge.close();
         if (speaker != null) speaker.close();
         super.onDestroy();
     }
