@@ -368,6 +368,22 @@ public final class HomeActivity extends Activity {
             case PROJECT_TASK:
                 confirmProject(command);
                 break;
+            case TOOLS:
+                new AlertDialog.Builder(this)
+                        .setTitle("Открыть расширенные возможности?")
+                        .setMessage("Для видеостудии, публикаций Metricool, " +
+                                "подключения GitHub и настроек моделей пока нужен " +
+                                "технический раздел. Я не буду утверждать, что " +
+                                "выполнил действие, пока сервис не подтвердит его. " +
+                                "Открыть инструменты?")
+                        .setNegativeButton("Отмена", (d, w) ->
+                                reply("Действие не запускалось."))
+                        .setPositiveButton("Открыть инструменты", (d, w) -> {
+                            openTools();
+                            reply("Открыл технический раздел. " +
+                                    "Публикация не выполнялась.");
+                        }).show();
+                break;
             case CHAT:
             default:
                 if (isGitHubQuestion(command)) confirmGitHubRead(command);
