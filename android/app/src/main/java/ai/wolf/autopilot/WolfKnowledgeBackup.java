@@ -85,8 +85,8 @@ public final class WolfKnowledgeBackup {
                 destination.write(MAGIC);
                 destination.write(salt);
                 destination.write(iv);
-                try (CipherOutputStream encrypted = new CipherOutputStream(destination, cipher);
-                     ZipOutputStream zip = new ZipOutputStream(encrypted)) {
+                try (ZipOutputStream zip =
+                             new ZipOutputStream(new CipherOutputStream(destination, cipher))) {
                     zip.setLevel(6);
                     zip.putNextEntry(new ZipEntry(ENTRY));
                     saved = db.writePortableJson(zip);
