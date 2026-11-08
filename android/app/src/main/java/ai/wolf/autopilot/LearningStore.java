@@ -164,8 +164,33 @@ public final class LearningStore extends SQLiteOpenHelper {
         return payload.toString(2);
     }
 
+    /** Validate portable learning material without touching the current DB. */
+    public static void validatePortable(String content) throws Exception {
+        if (content == null || content.length() > 120000)
+            throw new IllegalArgumentException("Слишком большой файл обучения.");
+        org.json.JSONObject root = new org.json.JSONObject(content);
+        if (root.getInt("schema") != 1 || !root.has("facts") ||
+                !root.has("examples") || root.length() != 3)
+            throw new IllegalArgumentException("Неизвестный формат обучающих записей.");
+        org.json.JSONArray facts = root.getJSONArray("facts");
+        org.json.JSONArray examples = root.getJSONArray("examples");
+        if (facts.length() > 100 || examples.length() > 120)
+            throw new IllegalArgumentException("В архиве превышен лимит памяти.");
+        for (int i = 0; i < facts.length(); i++)
+            validateContent(facts.getString(i), 600);
+        for (int i = 0; i < examples.length(); i++) {
+            org.json.JSONObject row = examples.getJSONObject(i);
+            if (row.length() != 2)
+                throw new IllegalArgumentException("Неверный формат примера обучения.");
+            validateContent(row.getString("text"), 450);
+            if (!CommandParser.validProject(row.getString("project")))
+                throw new IllegalArgumentException("Недопустимый проект в обучении.");
+        }
+    }
+
     /** Verify the complete file BEFORE mutating the DB, then replace atomically. */
     public void importJson(String content) throws Exception {
+        validatePortable(content);
         if (content == null || content.length() > 120000)
             throw new IllegalArgumentException("Файл резервной копии слишком большой.");
         org.json.JSONObject payload = new org.json.JSONObject(content);
