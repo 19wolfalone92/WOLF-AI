@@ -83,6 +83,8 @@ public final class WolfCommandRouter {
                 q.equals("статус управления") || q.equals("проверить управление") ||
                 q.equals("отмени управление") || q.equals("останови управление") ||
                 q.startsWith("нажми кнопку ") || q.startsWith("нажми в приложении ") ||
+                q.startsWith("маршрут в приложении ") ||
+                q.startsWith("выполни маршрут в приложении ") ||
                 q.equals("пролистай приложение") || q.equals("прокрути приложение") ||
                 q.equals("пролистай вниз в приложении"))
             return new Decision(Kind.UI_AUTOMATION, text,

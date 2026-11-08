@@ -37,7 +37,8 @@ class WOLF12AssistedAutonomy(unittest.TestCase):
         self.assertIn("UI_AUTOMATION", router)
         self.assertIn("case UI_AUTOMATION:", home)
         self.assertIn("handleAssistive(command)", home)
-        self.assertIn('setTitle("Разрешить одно действие?")', home)
+        self.assertIn('"Разрешить одно действие?"', home)
+        self.assertIn('"Разрешить маршрут из кнопок?"', home)
         self.assertIn("WolfAccessibilityService.arm(", home)
         self.assertIn("Settings.ACTION_ACCESSIBILITY_SETTINGS", home)
         self.assertIn('setNegativeButton("Отмена", null)', home)
@@ -78,7 +79,7 @@ class WOLF12AssistedAutonomy(unittest.TestCase):
         self.assertIn("AssistedNavigationTest.java", workflow)
         self.assertIn("ai.wolf.autopilot.AssistedNavigationTest", workflow)
         gradle=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '12.0.0'", gradle)
+        self.assertIn("versionName '12.1.0'", gradle)
 
 
 if __name__ == "__main__":

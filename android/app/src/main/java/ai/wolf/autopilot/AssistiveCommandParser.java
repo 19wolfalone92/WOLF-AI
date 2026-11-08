@@ -27,6 +27,14 @@ public final class AssistiveCommandParser {
                 lower.equals("прокрути приложение") ||
                 lower.equals("пролистай вниз в приложении"))
             return new Plan("scroll","");
+        for (String prefix : new String[]{
+                "выполни маршрут в приложении ", "маршрут в приложении "}) {
+            if (lower.startsWith(prefix)) {
+                String steps = text.substring(prefix.length()).trim();
+                java.util.List<String> plan = BrowserFlowPlan.parse(steps);
+                return new Plan("sequence", String.join(" > ", plan));
+            }
+        }
         for(String prefix:new String[]{"нажми кнопку ","нажми в приложении "}) {
             if(lower.startsWith(prefix)) {
                 String label=text.substring(prefix.length()).trim();
@@ -39,6 +47,6 @@ public final class AssistiveCommandParser {
         }
         throw new IllegalArgumentException(
                 "Команды: «Управление приложениями», «Нажми кнопку Настройки», " +
-                "«Пролистай приложение», «Статус управления», «Отмени управление».");
+                "«Пролистай приложение», «Маршрут в приложении Профиль > Настройки», «Статус управления», «Отмени управление».");
     }
 }

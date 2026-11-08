@@ -22,7 +22,7 @@ class SupervisedAutonomyV11(unittest.TestCase):
         self.assertNotIn("QUERY_ALL_PACKAGES", manifest)
         self.assertIn("android.permission.RECORD_AUDIO", manifest)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '12.0.0'", gradle)
+        self.assertIn("versionName '12.1.0'", gradle)
 
     def test_research_is_multi_step_and_source_grounded(self):
         home = source("HomeActivity")
