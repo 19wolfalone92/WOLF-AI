@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
 import java.util.Set;
@@ -21,9 +22,33 @@ public final class SpeechCenter {
     private boolean ready;
     private boolean loading;
     private String queuedText;
+    private Runnable afterSpeech;
+    private final Handler mainThread = new Handler(Looper.getMainLooper());
 
     public SpeechCenter(Context context) {
         this.context = context.getApplicationContext();
+    }
+
+    /** Called on UI thread after the complete Android TTS utterance. */
+    public synchronized void setOnUtteranceDone(Runnable callback) {
+        afterSpeech = callback;
+        if (engine != null && ready) installListener();
+    }
+
+    private void installListener() {
+        engine.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override public void onStart(String utteranceId) {}
+            @Override public void onDone(String utteranceId) {
+                mainThread.post(() -> {
+                    Runnable callback;
+                    synchronized (SpeechCenter.this) { callback = afterSpeech; }
+                    if (callback != null) callback.run();
+                });
+            }
+            @Override public void onError(String utteranceId) {
+                // Recognition is NOT restarted after TTS failure.
+            }
+        });
     }
 
     public synchronized String speak(String text) {
@@ -39,7 +64,10 @@ public final class SpeechCenter {
                 synchronized (SpeechCenter.this) {
                     loading = false;
                     ready = status == TextToSpeech.SUCCESS;
-                    if (ready && engine != null) engine.setSpeechRate(0.94f);
+                    if (ready && engine != null) {
+                        engine.setSpeechRate(0.94f);
+                        installListener();
+                    }
                     if (!ready) queuedText = null;
                 }
                 if (status == TextToSpeech.SUCCESS) {
@@ -113,5 +141,6 @@ public final class SpeechCenter {
         }
         ready = false;
         loading = false;
+        afterSpeech = null;
     }
 }

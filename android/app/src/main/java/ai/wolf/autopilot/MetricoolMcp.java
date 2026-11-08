@@ -22,7 +22,7 @@ import java.util.Locale;
 
 /**
  * Narrow, user-driven Streamable HTTP MCP client. Only reads brands or
- * creates ONE explicitly confirmed post. No model-generated tool calls.
+ * creates only an explicitly confirmed post. No model-generated tool calls.
  * Supports JSON and SSE data frames, exact OAuth issuer allowlist.
  */
 public final class MetricoolMcp {
@@ -216,8 +216,9 @@ public final class MetricoolMcp {
     public String schedule(VideoPost post) throws Exception {
         validate(post);
         String key = fingerprint(post);
-        if (prefs.getBoolean("sent_" + key, false))
-            throw new IllegalStateException("Похожая публикация уже отправлена. " +
+        if (prefs.getBoolean("sent_" + key, false) ||
+                prefs.getBoolean("attempt_" + key, false))
+            throw new IllegalStateException("Похожая публикация уже была попытана/отправлена. " +
                     "Проверь планировщик Metricool, чтобы избежать дубликата.");
         handshake();
         JSONObject tool = findTool(new String[]{"createScheduledPost", "create_schedule_post"});
@@ -263,6 +264,10 @@ public final class MetricoolMcp {
         }
         JSONObject args = new JSONObject().put("date", post.dateIso)
                 .put("blogId", post.brandId).put("info", info.toString());
+        // Persist BEFORE network write; timeouts after server acceptance are
+        // ambiguous. Never reissue this exact post automatically.
+        if (!prefs.edit().putBoolean("attempt_" + key, true).commit())
+            throw new IllegalStateException("Не удалось сохранить защиту от дубликатов.");
         JSONObject result = call(tool, args);
         // MCP result may have tool-specific errors inside text content; don't
         // declare success if returned text documents a rejection.

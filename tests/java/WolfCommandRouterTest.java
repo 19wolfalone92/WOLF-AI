@@ -30,6 +30,16 @@ public final class WolfCommandRouterTest {
         assertKind("Открой https://github.com", WolfCommandRouter.Kind.OPEN_URL);
         assertKind("Прочитай сайт https://example.com",
                 WolfCommandRouter.Kind.READ_URL);
+        assertKind("Исследуй тему энергоэффективность подстанций",
+                WolfCommandRouter.Kind.RESEARCH);
+        assertKind("Подготовь отчёт про батареи",
+                WolfCommandRouter.Kind.RESEARCH);
+        assertKind("Поставь будильник на 07:30",
+                WolfCommandRouter.Kind.DEVICE);
+        assertKind("Поставь таймер на 10 минут",
+                WolfCommandRouter.Kind.DEVICE);
+        assertKind("Настройки экрана",
+                WolfCommandRouter.Kind.DEVICE);
         assertKind("Открой YouTube", WolfCommandRouter.Kind.OPEN_URL);
         assertKind("Открой настройки телефона", WolfCommandRouter.Kind.DEVICE);
         assertKind("Покажи батарею", WolfCommandRouter.Kind.DEVICE);

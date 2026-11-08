@@ -41,7 +41,8 @@ public final class DeviceActions {
 
     public static Plan plan(Context context, String command) {
         String q = command == null ? "" : command.toLowerCase(Locale.ROOT);
-        if (any(q, "покажи батарею", "заряд батареи", "информация о телефоне")) {
+        if (any(q, "покажи батарею", "заряд батареи", "информация о телефоне",
+                "сколько памяти", "свободное место на телефоне")) {
             Intent state = context.registerReceiver(null,
                     new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
             int level = state == null ? -1 :
@@ -60,6 +61,59 @@ public final class DeviceActions {
                     " ГБ из " + total + " ГБ.\n" +
                     "WOLF не читает сообщения, экран, контакты и другие приложения.";
             return new Plan(null, "Показать локальную информацию", answer, false);
+        }
+        // Native alarms and timers: Android's CLOCK UI shows the complete
+        // request before committing; WOLF never asks for SET_ALARM permission.
+        if (any(q, "будильник на", "поставь будильник", "разбуди в")) {
+            Matcher clock = Pattern.compile("(?<![0-9])([01]?[0-9]|2[0-3]):([0-5][0-9])(?![0-9])")
+                    .matcher(q);
+            if (!clock.find())
+                return new Plan(null, "Установить будильник",
+                        "Напиши время в формате: «Поставь будильник на 07:30».", false);
+            int hour = Integer.parseInt(clock.group(1));
+            int minute = Integer.parseInt(clock.group(2));
+            Intent alarm = new Intent(AlarmClock.ACTION_SET_ALARM);
+            alarm.putExtra(AlarmClock.EXTRA_HOUR, hour);
+            alarm.putExtra(AlarmClock.EXTRA_MINUTES, minute);
+            alarm.putExtra(AlarmClock.EXTRA_MESSAGE, "WOLF AI");
+            alarm.putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+            return new Plan(alarm, "Открыть будильник на " +
+                    String.format(Locale.ROOT, "%02d:%02d", hour, minute) +
+                    " в приложении часов; подтвердить установку в Android.", null, false);
+        }
+        if (any(q, "поставь таймер", "запусти таймер", "таймер на")) {
+            Matcher timer = Pattern.compile("(?<![0-9])([0-9]{1,3})\\s*(?:минут|мин\\b)")
+                    .matcher(q);
+            if (!timer.find())
+                return new Plan(null, "Установить таймер",
+                        "Напиши: «Поставь таймер на 10 минут».", false);
+            int minutes = Integer.parseInt(timer.group(1));
+            if (minutes < 1 || minutes > 600)
+                return new Plan(null, "Установить таймер",
+                        "Таймер должен быть от 1 до 600 минут.", false);
+            Intent timerIntent = new Intent(AlarmClock.ACTION_SET_TIMER);
+            timerIntent.putExtra(AlarmClock.EXTRA_LENGTH, minutes * 60);
+            timerIntent.putExtra(AlarmClock.EXTRA_MESSAGE, "WOLF AI");
+            timerIntent.putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+            return new Plan(timerIntent, "Открыть таймер " + minutes +
+                    " мин; подтвердить запуск в Android.", null, false);
+        }
+        if (any(q, "настройки яркости", "настройки экрана"))
+            return new Plan(new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                    "Открыть настройки экрана. Изменение выполняешь сам.", null, false);
+        if (any(q, "настройки звука", "громкость телефона"))
+            return new Plan(new Intent(Settings.ACTION_SOUND_SETTINGS),
+                    "Открыть настройки громкости и звука.", null, false);
+        if (any(q, "настройки геолокации", "настройки местоположения"))
+            return new Plan(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                    "Открыть настройки местоположения (без доступа WOLF к геоданным).", null, false);
+        if (any(q, "настройки режима полёта", "режим полета"))
+            return new Plan(new Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS),
+                    "Открыть настройки режима полёта.", null, false);
+        if (any(q, "настройки приложения wolf", "настройки wolf ai")) {
+            Intent app = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + context.getPackageName()));
+            return new Plan(app, "Открыть системную страницу разрешений WOLF AI.", null, false);
         }
         if (any(q, "настройки wi-fi", "настройки вайфай",
                 "открой wifi", "включи вайфай"))

@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -60,6 +60,14 @@ public final class WolfCommandRouter {
                 query = "";
             return new Decision(Kind.WEB_SEARCH, query, "Поиск в браузере.");
         }
+        // Explicit deep-research intent triggers a multi-step, source-grounded
+        // report with separate consent, never silent crawling of private chats.
+        if (contains(q, "исследуй тему", "сделай исследование",
+                "подготовь исследование", "подготовь отчёт",
+                "подготовь отчет", "сравни источники", "изучи подробно тему",
+                "сделай глубокий поиск"))
+            return new Decision(Kind.RESEARCH, text,
+                    "Исследовать публичные веб-источники и подготовить отчёт.");
         if (contains(q, "опубликуй видео", "опубликуй ролик",
                 "выложи видео", "выложи ролик", "запости видео",
                 "запланируй публикацию", "загрузи ролик в тикток",
@@ -76,6 +84,14 @@ public final class WolfCommandRouter {
                 "покажи будильник", "открой часы", "позвони", "набери номер",
                 "напиши смс", "открой карты", "открой календарь",
                 "покажи батарею", "заряд батареи", "информация о телефоне",
+                "сколько памяти", "свободное место на телефоне",
+                "поставь будильник", "будильник на", "разбуди в",
+                "поставь таймер", "запусти таймер", "таймер на",
+                "настройки яркости", "настройки экрана",
+                "настройки звука", "громкость телефона",
+                "настройки геолокации", "настройки местоположения",
+                "настройки режима полёта", "режим полета",
+                "настройки приложения wolf", "настройки wolf ai",
                 "открой wifi", "включи вайфай"))
             return new Decision(Kind.DEVICE, text, "Выполнить действие через Android.");
         // Remote code checks are NEVER confused with arbitrary device or social writes.

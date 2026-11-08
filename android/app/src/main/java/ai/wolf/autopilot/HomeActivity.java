@@ -26,6 +26,8 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -41,6 +43,7 @@ import java.util.concurrent.Executors;
 public final class HomeActivity extends Activity {
     private static final int VOICE = 9301;
     private static final int DOCUMENT = 9302;
+    private static final int EXPORT_REPORT = 9303;
     private static final int BG = Color.rgb(10, 15, 28);
     private static final int PANEL = Color.rgb(19, 29, 48);
     private static final int INPUT = Color.rgb(31, 45, 69);
@@ -64,8 +67,13 @@ public final class HomeActivity extends Activity {
     private TextView subtitle;
     private Button send;
     private Button voiceAnswer;
+    private Button voiceMode;
     private boolean busy;
     private boolean aloud;
+    private boolean voiceSession;
+    private boolean speechListening;
+    private String lastAnswer = "";
+    private String pendingExport = "";
 
     private int dp(float value) {
         return Math.round(getResources().getDisplayMetrics().density * value);
@@ -118,6 +126,12 @@ public final class HomeActivity extends Activity {
         tasks = new TaskStore(this);
         secrets = new SecureStore(this);
         speaker = new SpeechCenter(this);
+        // Conversational voice is opt-in and active only while the user
+        // keeps this screen open; never listen in the background.
+        speaker.setOnUtteranceDone(() -> {
+            if (voiceSession && !busy && !speechListening &&
+                    !isFinishing() && !isDestroyed()) startSpeechRecognition();
+        });
         buildHome();
         renderHistory();
         Intent received = getIntent();
@@ -170,6 +184,8 @@ public final class HomeActivity extends Activity {
                         "🌐 Интернет-браузер",
                         "📂 Добавить документ в память",
                         "📱 Что WOLF может делать на телефоне",
+                        "📅 Пакетные публикации Metricool",
+                        "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
                     switch (which) {
@@ -178,7 +194,9 @@ public final class HomeActivity extends Activity {
                         case 2: openBrowser(""); break;
                         case 3: pickDocument(); break;
                         case 4: showPhoneCapabilities(); break;
-                        case 5: confirmClearChat(); break;
+                        case 5: openBatchPublisher(); break;
+                        case 6: exportAnswer(); break;
+                        case 7: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -247,8 +265,34 @@ public final class HomeActivity extends Activity {
         voiceAnswer.setOnClickListener(v -> {
             aloud = !aloud;
             voiceAnswer.setText(aloud ? "🔊 Ответ вслух: вкл" : "🔈 Ответ вслух: выкл");
-            if (!aloud) speaker.stop();
+            if (!aloud) {
+                voiceSession = false;
+                refreshVoiceMode();
+                speaker.stop();
+            }
         });
+
+        voiceMode = button("🎧 Диалог голосом: выкл", false);
+        composer.addView(voiceMode, new LinearLayout.LayoutParams(-1, dp(44)));
+        voiceMode.setOnClickListener(v -> {
+            voiceSession = !voiceSession;
+            if (voiceSession) {
+                aloud = true;
+                voiceAnswer.setText("🔊 Ответ вслух: вкл");
+                refreshVoiceMode();
+                speaker.stop();
+                startSpeechRecognition();
+            } else {
+                speaker.stop();
+                refreshVoiceMode();
+            }
+        });
+    }
+
+    private void refreshVoiceMode() {
+        if (voiceMode != null) voiceMode.setText(voiceSession ?
+                "🎧 Диалог голосом: вкл · нажми, чтобы остановить" :
+                "🎧 Диалог голосом: выкл");
     }
 
     private void renderHistory() {
@@ -298,9 +342,19 @@ public final class HomeActivity extends Activity {
     }
 
     private void reply(String text) {
+        lastAnswer = text;
         addMessage(false, text, true);
         subtitle.setText("● Готов · напиши следующую команду");
-        if (aloud) speaker.speak(text);
+        if (aloud || voiceSession) {
+            String outcome = speaker.speak(text);
+            if (voiceSession && (outcome.startsWith("В установленном Android") ||
+                    outcome.startsWith("Язык ответа недоступен") ||
+                    outcome.startsWith("Не удалось"))) {
+                voiceSession = false;
+                refreshVoiceMode();
+                subtitle.setText("● Голосовой диалог завершён: нет доступного TTS");
+            }
+        }
     }
 
     private void setBusy(boolean value, String status) {
@@ -365,6 +419,9 @@ public final class HomeActivity extends Activity {
             case READ_URL:
                 confirmPageRead(command, decision.argument);
                 break;
+            case RESEARCH:
+                confirmResearch(command);
+                break;
             case DEVICE:
                 runDevice(command);
                 break;
@@ -372,6 +429,25 @@ public final class HomeActivity extends Activity {
                 confirmProject(command);
                 break;
             case TOOLS:
+                if (isPublishingRequest(command)) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Публикация видео через Metricool")
+                            .setMessage("Для публикации без телефона после планирования " +
+                                    "используется подключённый Metricool MCP и публичные " +
+                                    "ссылки MP4. Можно отправить до 12 постов за раз " +
+                                    "с одним явным подтверждением. WOLF не будет " +
+                                    "называть загрузку публикацией, пока платформа не " +
+                                    "подтвердила итог. Открыть пакетный планировщик?")
+                            .setNegativeButton("Отмена", (d, w) ->
+                                    reply("Никакие публикации не отправлялись."))
+                            .setPositiveButton("Открыть", (d, w) -> {
+                                openBatchPublisher();
+                                reply("Открыл пакетный планировщик Metricool. " +
+                                        "Вставь даты, публичные ссылки MP4 и подписи. " +
+                                        "Отправка начнётся только после твоего согласия.");
+                            }).show();
+                    break;
+                }
                 new AlertDialog.Builder(this)
                         .setTitle("Открыть расширенные возможности?")
                         .setMessage("Для видеостудии, публикаций Metricool, " +
@@ -394,6 +470,44 @@ public final class HomeActivity extends Activity {
                         command, documents, learning, chat.recent(8)).text);
                 break;
         }
+    }
+
+    private boolean isPublishingRequest(String question) {
+        String q = question.toLowerCase(Locale.ROOT);
+        return q.contains("опубли") || q.contains("вылож") ||
+                q.contains("запланируй публикац") || q.contains("загрузи ролик") ||
+                q.contains("запости");
+    }
+
+    private void confirmResearch(String instruction) {
+        String topic = instruction.trim();
+        String lower = topic.toLowerCase(Locale.ROOT);
+        for (String prefix : new String[]{"исследуй тему", "сделай исследование",
+                "подготовь исследование", "подготовь отчёт",
+                "подготовь отчет", "сравни источники", "изучи подробно тему",
+                "сделай глубокий поиск"}) {
+            if (lower.startsWith(prefix)) {
+                topic = topic.substring(prefix.length()).replaceFirst("^[\\s:—-]+", "");
+                break;
+            }
+        }
+        if (topic.length() < 3 || topic.length() > 180) {
+            reply("Укажи тему исследования длиной 3–180 символов.");
+            return;
+        }
+        final String subject = topic;
+        new AlertDialog.Builder(this)
+                .setTitle("Начать исследование?")
+                .setMessage("Запрос «" + subject + "» уйдёт в поисковик. " +
+                        "WOLF прочитает до трёх публичных HTTPS-страниц " +
+                        "(без входа в аккаунты), составит отчёт локальной Qwen " +
+                        "и прикрепит реальные ссылки. Личные заметки, документы, " +
+                        "токены и история чата наружу не отправляются. " +
+                        "Результат можно сохранить через ☰.")
+                .setNegativeButton("Отмена", (d,w) -> reply("Исследование отменено."))
+                .setPositiveButton("Исследовать", (d,w) ->
+                        background(() -> ResearchReport.run(getApplicationContext(), subject)))
+                .show();
     }
 
     private boolean isGitHubQuestion(String question) {
@@ -588,14 +702,19 @@ public final class HomeActivity extends Activity {
     }
 
     private void startSpeechRecognition() {
+        if (speechListening || busy || isFinishing() || isDestroyed()) return;
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU");
         intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "Скажи свою команду WOLF AI");
         try {
+            speechListening = true;
             startActivityForResult(intent, VOICE);
         } catch (Exception error) {
+            speechListening = false;
+            voiceSession = false;
+            refreshVoiceMode();
             reply("На телефоне нет доступной службы распознавания речи. " +
                     "Можно писать текстом. Некоторые голосовые службы " +
                     "используют интернет — это настройка Android.");
@@ -613,16 +732,33 @@ public final class HomeActivity extends Activity {
 
     @Override protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
-        if (code == VOICE && result == RESULT_OK && data != null) {
-            ArrayList<String> resultWords = data.getStringArrayListExtra(
-                    RecognizerIntent.EXTRA_RESULTS);
-            if (resultWords != null && !resultWords.isEmpty()) {
-                String recognized = resultWords.get(0);
-                input.setText(recognized);
-                // Spoken commands run through the exact same secure routing
-                // and confirmation dialog as typed commands.
-                sendCurrent();
-            }
+        if (code == VOICE) {
+            speechListening = false;
+            if (result == RESULT_OK && data != null) {
+                ArrayList<String> resultWords = data.getStringArrayListExtra(
+                        RecognizerIntent.EXTRA_RESULTS);
+                if (resultWords != null && !resultWords.isEmpty()) {
+                    String recognized = resultWords.get(0);
+                    input.setText(recognized);
+                    // Spoken commands use identical permissions to typed commands.
+                    sendCurrent();
+                } else stopVoiceSession();
+            } else stopVoiceSession();
+        } else if (code == EXPORT_REPORT && result == RESULT_OK &&
+                data != null && data.getData() != null) {
+            final Uri output = data.getData();
+            final String content = pendingExport;
+            pendingExport = "";
+            if (content.isEmpty()) {
+                reply("Нет подготовленного текста для сохранения.");
+            } else background(() -> {
+                try (OutputStream file = getContentResolver().openOutputStream(output, "w")) {
+                    if (file == null) throw new IllegalStateException("Нет доступа к файлу.");
+                    file.write(content.getBytes(StandardCharsets.UTF_8));
+                    file.flush();
+                }
+                return "✅ Сохранил текст в выбранный документ через Android.";
+            });
         } else if (code == DOCUMENT && result == RESULT_OK &&
                 data != null && data.getData() != null) {
             Uri file = data.getData();
@@ -643,6 +779,30 @@ public final class HomeActivity extends Activity {
                             background(() -> documents.importDocument(
                                     getApplicationContext(), file))).show();
         }
+    }
+
+    private void stopVoiceSession() {
+        voiceSession = false;
+        refreshVoiceMode();
+        if (speaker != null) speaker.stop();
+    }
+
+    private void exportAnswer() {
+        if (lastAnswer == null || lastAnswer.trim().isEmpty()) {
+            reply("Нет ответа для сохранения. Сначала задай вопрос.");
+            return;
+        }
+        pendingExport = lastAnswer;
+        Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        save.addCategory(Intent.CATEGORY_OPENABLE);
+        save.setType("text/plain");
+        save.putExtra(Intent.EXTRA_TITLE, "WOLF_AI_отчёт.txt");
+        try { startActivityForResult(save, EXPORT_REPORT); }
+        catch (Exception error) { reply("Android не смог открыть выбор файла."); }
+    }
+
+    private void openBatchPublisher() {
+        startActivity(new Intent(this, MetricoolBatchActivity.class));
     }
 
     private void openBrowser(String value) {
@@ -691,6 +851,7 @@ public final class HomeActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        voiceSession = false;
         worker.shutdownNow();
         if (speaker != null) speaker.close();
         if (chat != null) chat.close();
