@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -31,6 +31,15 @@ public final class WolfCommandRouter {
                 "как пользоваться", "помощь", "/help", "расскажи о себе"))
             return new Decision(Kind.HELP, "", "Показать возможности и ограничения.");
 
+        // Real remote CPU Chromium runs only after explicit user approval.
+        // A public cloud browser is intentionally distinct from an authenticated
+        // user-operated browser and never gets private cookies or passwords.
+        if (q.startsWith("облачный браузер ") ||
+                q.startsWith("запусти облачный браузер ") ||
+                q.startsWith("исследуй сайт в облаке ") ||
+                q.equals("статус облачного браузера"))
+            return new Decision(Kind.CLOUD_BROWSER, text,
+                    "GitHub Actions Chromium: публичный сайт без авторизации.");
         Matcher url = URL.matcher(text);
         if (url.find()) {
             String value = url.group().replaceAll("[),.;!?]+$", "");
