@@ -66,6 +66,17 @@ PAT is needed for private repositories. No arbitrary repo URLs,
 automatic PRs, external code uploads, trades or TikTok publications
 are authorized by a read-only chat question.
 
+**Explicit source review:** the new Android card «Проверить настоящий исходник
+выбранного проекта» lets you choose exactly one allowlisted repository,
+a relative text source path and a start line. GitHub API reads only that
+file (up to 50 KB), locally extracts up to 70 lines/1900 characters and
+passes the selected excerpt to on-device Qwen for a non-executing review.
+The user receives the real file SHA, GitHub URL with line anchors and
+original excerpt even if local generation fails. This is NOT whole
+repository comprehension. Filenames containing credentials/secrets
+and files containing obvious tokens are refused. No source is sent
+to an external hosted language model.
+
 The agent can also retrieve actual WOLF GitHub Actions statuses and
 explicitly requested Wikipedia sources. A generic debugging question
 does **not** send text to Wikipedia; encyclopedia research intent
