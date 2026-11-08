@@ -721,6 +721,31 @@ public final class MainActivity extends Activity {
                     value -> knowledgeStatus.setText(value),
                     error -> knowledgeStatus.setText("Ошибка библиотеки: " + error));
         });
+        EditText docSearch = entry("Найти в загруженных документах…", false);
+        add(docs, docSearch, 0, 8);
+        TextView docMatches = text("Совпадения не запрашивались.", 13, MUTED, false);
+        add(docs, docMatches, 0, 8);
+        Button findDoc = button("🔎 Найти текст и показать точные источники", false);
+        add(docs, findDoc, 0, 8);
+        findDoc.setOnClickListener(v -> {
+            String query = docSearch.getText().toString().trim();
+            docMatches.setText("Ищу точные совпадения только в локальной базе…");
+            async(() -> {
+                java.util.List<KnowledgeBase.Snippet> found = knowledge.search(query, 5);
+                if (found.isEmpty()) return "Ничего не найдено в импортированных текстах.";
+                StringBuilder result = new StringBuilder("📖 Найденные фрагменты:\n\n");
+                for (KnowledgeBase.Snippet row : found) {
+                    String excerpt = row.content.length() > 560 ?
+                            row.content.substring(0, 560) + "…" : row.content;
+                    result.append(row.label()).append("\n")
+                            .append(excerpt).append("\n\n");
+                }
+                result.append("Текст выше взят из локальной базы; " +
+                        "он не является генерацией языковой модели.");
+                return result.toString();
+            }, value -> docMatches.setText(value),
+                    error -> docMatches.setText("Поиск отклонён: " + error));
+        });
         deleteKnowledgeId = entry("Номер документа для удаления (например, 3)", false);
         add(docs, deleteKnowledgeId, 0, 6);
         Button deleteDoc = button("🗑 Удалить выбранный документ", false);
