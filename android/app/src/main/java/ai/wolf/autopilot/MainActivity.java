@@ -897,6 +897,51 @@ public final class MainActivity extends Activity {
                 questionInput.setText("");
             }, error -> aiOutput.setText("Не удалось запустить встроенный ИИ: " + error));
         });
+        Button toolAgent = button("🤖 Спросить агента (память + источники + GitHub)", true);
+        add(llm, toolAgent, 0, 9);
+        toolAgent.setOnClickListener(v -> {
+            String question = questionInput.getText().toString().trim();
+            if (question.length() < 3 || question.length() > 600) {
+                aiOutput.setText("Для инструментального агента нужен вопрос 3–600 символов.");
+                return;
+            }
+            new android.app.AlertDialog.Builder(this)
+                    .setTitle("Разрешить агенту чтение источников?")
+                    .setMessage("WOLF использует свою локальную Qwen и память, " +
+                            "может прочитать статусы GitHub Actions и выполнить " +
+                            "поиск в Wikipedia, если это требуется вопросом. " +
+                            "Поисковый запрос уйдёт на Wikimedia, но личная память, " +
+                            "история чата и токены туда не передаются. " +
+                            "Записи в GitHub, публикации и торговля не выполняются. " +
+                            "Разрешить этот один запрос?\n\n" + question)
+                    .setNegativeButton("Отмена", null)
+                    .setPositiveButton("Запустить агента", (dialog, button) -> {
+                        aiOutput.setText("🤖 Анализирую вопрос, выполняю разрешённые " +
+                                "инструменты и сверяю источники…");
+                        async(() -> {
+                            LocalToolAgent.Answer result = LocalToolAgent.run(
+                                    getApplicationContext(), question, secrets.load(),
+                                    learning, chat.recent(8));
+                            return result.text + "\n\n── ЖУРНАЛ ИНСТРУМЕНТОВ ──\n" +
+                                    result.trace;
+                        }, result -> {
+                            chat.add("user", question);
+                            chat.add("assistant", result);
+                            lastAiAnswer = result;
+                            questionInput.setText("");
+                            aiOutput.setText(result);
+                            android.text.util.Linkify.addLinks(
+                                    aiOutput, android.text.util.Linkify.WEB_URLS);
+                            aiOutput.setMovementMethod(
+                                    android.text.method.LinkMovementMethod.getInstance());
+                        }, error -> aiOutput.setText("Агент не завершил работу: " + error +
+                                "\nНикаких внешних изменений не выполнялось."));
+                    }).show();
+        });
+        add(llm, text("Инструментальный режим использует максимум два " +
+                "внешних источника чтения. Все реальные изменения проектов " +
+                "запускаются отдельно, из карточек задач с подтверждением.",
+                12, MUTED, false), 2, 8);
         Button sayAnswer = button("🔊 Озвучить последний ответ", false);
         add(llm, sayAnswer, 0, 7);
         sayAnswer.setOnClickListener(v -> {
