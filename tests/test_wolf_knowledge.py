@@ -35,7 +35,7 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertIn("WHERE passages MATCH ? LIMIT 65", source)
         self.assertIn('new String[]{match.toString()}', source)
         self.assertIn('return "[" + source + " · фрагмент " + segment + "]"', source)
-        self.assertIn("Копия хранится", (JAVA / "MainActivity.java").read_text("utf-8"))
+        self.assertIn("База в памяти телефона", (JAVA / "MainActivity.java").read_text("utf-8"))
         self.assertIn("EmbeddedAi.ask(app, request, history, facts)", answer)
         self.assertIn("Наличие фрагмента не доказывает", answer)
         self.assertIn("documents.search(question, 3)", answer)

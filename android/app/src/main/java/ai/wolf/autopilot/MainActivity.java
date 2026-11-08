@@ -35,6 +35,8 @@ public final class MainActivity extends Activity {
     private static final int IMPORT_GGUF = 6150;
     private static final int VOICE_INPUT = 6160;
     private static final int IMPORT_DOCUMENT = 6170;
+    private static final int EXPORT_KNOWLEDGE_ENCRYPTED = 6171;
+    private static final int IMPORT_KNOWLEDGE_ENCRYPTED = 6172;
     private static final int BG = Color.rgb(8, 14, 27);
     private static final int PANEL = Color.rgb(19, 30, 50);
     private static final int INPUT = Color.rgb(29, 42, 64);
@@ -59,6 +61,7 @@ public final class MainActivity extends Activity {
     private ChatStore chat;
     private LearningStore learning;
     private KnowledgeBase knowledge;
+    private char[] temporaryKnowledgePassword;
     private TextView knowledgeStatus;
     private EditText deleteKnowledgeId;
     private MetricoolOAuth metricoolAuth;
@@ -700,7 +703,8 @@ public final class MainActivity extends Activity {
                 "Импортируй текстовые документы и исходники через файлы Android. " +
                 "WOLF индексирует их в приватной SQLite FTS-базе и найдёт " +
                 "подходящие фрагменты для ответа Qwen. Без облачных API и оплаты. " +
-                "PDF/DOCX-сканы пока не поддерживаются.");
+                "PDF и DOCX с текстовым слоем поддерживаются офлайн. " +
+                "Отсканированные PDF без текстового слоя пока требуют OCR.");
         knowledgeStatus = text("Индексировано документов: " + knowledge.documentCount(),
                 13, CYAN, false);
         add(docs, knowledgeStatus, 5, 9);
@@ -782,12 +786,25 @@ public final class MainActivity extends Activity {
                                 value -> knowledgeStatus.setText(value),
                                 error -> knowledgeStatus.setText("Ошибка: " + error)))
                 .show());
-        add(docs, text("До 30 файлов по 1,5 МБ: TXT, Markdown, CSV, JSON, SRT, " +
-                "текстовый код и другие UTF-8 форматы. Копия хранится в приватной " +
-                "базе приложения без шифрования отдельного файла. " +
-                "При удалении/переустановке APK данные могут исчезнуть — " +
-                "сохраняй оригиналы. Никакой фоновый поиск по устройству не ведётся.",
-                12, ORANGE, false), 4, 0);
+        add(docs, text("До 30 документов по 1,5 МБ извлечённого текста; " +
+                "PDF/DOCX до 4 МБ, PDF до 45 страниц. " +
+                "Сканам без текста требуется OCR. База в памяти телефона не " +
+                "шифруется отдельно. Для переноса на другую установку WOLF " +
+                "используй ЗАШИФРОВАННУЮ резервную копию ниже.",
+                12, ORANGE, false), 4, 8);
+        Button backupKb = button("🔐 Сохранить зашифрованную библиотеку (.wolfkb)", true);
+        add(docs, backupKb, 0, 8);
+        backupKb.setOnClickListener(v -> chooseKnowledgePassword(false));
+        Button restoreKb = button("🔓 Восстановить библиотеку из .wolfkb", false);
+        add(docs, restoreKb, 0, 8);
+        restoreKb.setOnClickListener(v -> chooseKnowledgePassword(true));
+        add(docs, text("AES-256-GCM + PBKDF2: копия переносится между " +
+                "переустановками и телефонами. Пароль от 12 символов, " +
+                "не хранится в приложении. БЕЗ ПАРОЛЯ ВОССТАНОВИТЬ НЕЛЬЗЯ. " +
+                "Архив содержит только документы: не чат, токены и не задачи. " +
+                "Импорт заменяет текущую библиотеку только после проверки " +
+                "криптографической целостности файла.",
+                12, MUTED, false), 3, 0);
 
         LinearLayout learn = card(page, "📚 Обучение и память WOLF AI",
                 "Сохраняй полезные факты и собственные примеры маршрутизации. " +
@@ -1157,7 +1174,7 @@ public final class MainActivity extends Activity {
                 })
                 .show());
 
-        TextView footer = text("WOLF AI 7.0 • Приватная библиотека • Агент • GitHub", 12, MUTED, false);
+        TextView footer = text("WOLF AI 8.0 • PDF / DOCX • Зашифрованная память • Agent", 12, MUTED, false);
         footer.setGravity(Gravity.CENTER);
         add(page, footer, 10, 22);
     }
@@ -1622,8 +1639,105 @@ public final class MainActivity extends Activity {
                 }).show();
     }
 
+    private void chooseKnowledgePassword(boolean restoring) {
+        android.widget.EditText password = new android.widget.EditText(this);
+        password.setHint("Пароль (12+ символов)");
+        password.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        LinearLayout form = vertical();
+        pad(form, 18, 12);
+        add(form, password, 0, 4);
+        android.widget.EditText repeat = null;
+        if (!restoring) {
+            repeat = new android.widget.EditText(this);
+            repeat.setHint("Повтори пароль");
+            repeat.setInputType(android.text.InputType.TYPE_CLASS_TEXT |
+                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+            add(form, repeat, 0, 6);
+        }
+        final android.widget.EditText confirmation = repeat;
+        new android.app.AlertDialog.Builder(this)
+                .setTitle(restoring ? "Открыть зашифрованную копию" :
+                        "Зашифровать резервную копию")
+                .setMessage(restoring ?
+                        "Введи пароль от созданного ранее .wolfkb. После выбора " +
+                        "файла потребуется подтвердить ЗАМЕНУ документов. " +
+                        "Ошибочный пароль не удалит текущую библиотеку." :
+                        "Придумай пароль минимум из 12 символов и сохрани " +
+                        "его отдельно. В копию войдут все индексированные " +
+                        "документы, но не GitHub PAT и не история чата.")
+                .setView(form)
+                .setNegativeButton("Отмена", (dialog, button) -> {
+                    password.setText("");
+                    if (confirmation != null) confirmation.setText("");
+                })
+                .setPositiveButton("Выбрать файл", (dialog, button) -> {
+                    String entered = password.getText().toString();
+                    String repeated = confirmation == null ? entered :
+                            confirmation.getText().toString();
+                    password.setText("");
+                    if (confirmation != null) confirmation.setText("");
+                    if (entered.length() < 12 || entered.length() > 256 ||
+                            !entered.equals(repeated)) {
+                        knowledgeStatus.setText("Пароль должен содержать 12–256 символов; " +
+                                "при экспорте оба ввода должны совпадать.");
+                        return;
+                    }
+                    if (temporaryKnowledgePassword != null)
+                        java.util.Arrays.fill(temporaryKnowledgePassword, '\0');
+                    temporaryKnowledgePassword = entered.toCharArray();
+                    Intent picker = new Intent(restoring ?
+                            Intent.ACTION_OPEN_DOCUMENT : Intent.ACTION_CREATE_DOCUMENT);
+                    picker.addCategory(Intent.CATEGORY_OPENABLE);
+                    picker.setType("application/octet-stream");
+                    picker.addFlags(restoring ?
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION :
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if (!restoring)
+                        picker.putExtra(Intent.EXTRA_TITLE, "wolf-knowledge.wolfkb");
+                    startActivityForResult(picker, restoring ?
+                            IMPORT_KNOWLEDGE_ENCRYPTED : EXPORT_KNOWLEDGE_ENCRYPTED);
+                }).show();
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_KNOWLEDGE_ENCRYPTED ||
+                requestCode == IMPORT_KNOWLEDGE_ENCRYPTED) {
+            final char[] password = temporaryKnowledgePassword;
+            temporaryKnowledgePassword = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null ||
+                    password == null) {
+                if (password != null) java.util.Arrays.fill(password, '\0');
+                return;
+            }
+            final Uri file = data.getData();
+            if (requestCode == EXPORT_KNOWLEDGE_ENCRYPTED) {
+                knowledgeStatus.setText("Шифрую библиотеку в выбранный файл…");
+                async(() -> WolfKnowledgeBackup.exportEncrypted(
+                                getApplicationContext(), knowledge, file, password),
+                        result -> knowledgeStatus.setText(result),
+                        error -> knowledgeStatus.setText("Экспорт отклонён: " + error));
+            } else {
+                new android.app.AlertDialog.Builder(this)
+                        .setTitle("Заменить текущую библиотеку?")
+                        .setMessage("После ПОЛНОЙ проверки пароля и целостности " +
+                                "архива существующая библиотека документов " +
+                                "будет заменена данными из файла. " +
+                                "Заметки, чат и GitHub-токены не изменятся.")
+                        .setNegativeButton("Не заменять", (dialog, button) ->
+                                java.util.Arrays.fill(password, '\0'))
+                        .setPositiveButton("Проверить и восстановить", (dialog, button) -> {
+                            knowledgeStatus.setText("Проверяю пароль, AES-GCM и ZIP…");
+                            async(() -> WolfKnowledgeBackup.restoreEncrypted(
+                                            getApplicationContext(), knowledge, file, password),
+                                    result -> knowledgeStatus.setText(result),
+                                    error -> knowledgeStatus.setText(
+                                            "Восстановление отклонено: " + error));
+                        }).show();
+            }
+            return;
+        }
         if (requestCode == EXPORT_LEARNING) {
             if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
             Uri target = data.getData();
@@ -1850,6 +1964,8 @@ public final class MainActivity extends Activity {
         tasks.close();
         chat.close();
         learning.close();
+        if (temporaryKnowledgePassword != null)
+            java.util.Arrays.fill(temporaryKnowledgePassword, '\0');
         if (knowledge != null) knowledge.close();
         if (speaker != null) speaker.close();
         super.onDestroy();

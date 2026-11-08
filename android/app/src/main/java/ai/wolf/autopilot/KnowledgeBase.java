@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 public final class KnowledgeBase extends SQLiteOpenHelper {
     private static final int MAX_DOCS = 30;
     private static final int MAX_BYTES = 1_500_000;
+    private static final int MAX_INPUT_BYTES = 4_000_000;
     private static final int MAX_CHUNKS = 1900;
     private static final int CHUNK = 1050;
     private static final int OVERLAP = 130;
@@ -43,7 +44,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
     private static final Set<String> EXT = new HashSet<>(Arrays.asList(
             "txt", "md", "markdown", "csv", "log", "json", "xml",
             "html", "htm", "py", "js", "ts", "java", "kt",
-            "yaml", "yml", "srt", "ini", "css", "sql"));
+            "yaml", "yml", "srt", "ini", "css", "sql", "pdf", "docx"));
     private static final Set<String> STOP = new HashSet<>(Arrays.asList(
             "как", "что", "где", "когда", "если", "для", "или", "это",
             "нужно", "можно", "сделай", "проверь", "весь", "все",
@@ -113,7 +114,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
         int dot = lower.lastIndexOf('.');
         if (dot < 1 || !EXT.contains(lower.substring(dot + 1)))
             throw new IllegalArgumentException("Поддерживаются текст, MD, CSV, JSON, код и SRT. " +
-                    "PDF/DOCX и двоичные файлы пока не индексируются.");
+                    "Бинарные форматы, кроме текстового PDF и DOCX, не индексируются.");
         if (lower.contains(".env") || lower.contains("secret") ||
                 lower.contains("credential") || lower.contains("password") ||
                 lower.contains("token")) {
@@ -169,14 +170,18 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
             byte[] buffer = new byte[8192];
             int n;
             while ((n = in.read(buffer)) != -1) {
-                if (out.size() + n > MAX_BYTES)
-                    throw new IllegalArgumentException("Размер превышает 1.5 МБ. " +
-                            "Раздели документ на несколько UTF-8 текстовых файлов.");
+                if (out.size() + n > MAX_INPUT_BYTES)
+                    throw new IllegalArgumentException("Входной файл больше 4 МБ. " +
+                            "Раздели большой PDF/DOCX на несколько частей.");
                 out.write(buffer, 0, n);
             }
             input = out.toByteArray();
         }
-        String content = validText(input);
+        String lower = name.toLowerCase(Locale.ROOT);
+        String content = (lower.endsWith(".pdf") || lower.endsWith(".docx")) ?
+                DocumentExtractor.extract(context, name, input) : validText(input);
+        if (content.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES)
+            throw new IllegalArgumentException("Текст документа превышает 1,5 МБ.");
         String digest = hex(MessageDigest.getInstance("SHA-256").digest(input));
         List<String> passages = chunk(content);
         SQLiteDatabase db = getWritableDatabase();
@@ -195,7 +200,7 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
             ContentValues document = new ContentValues();
             document.put("name", name);
             document.put("sha256", digest);
-            document.put("size_bytes", input.length);
+            document.put("size_bytes", content.getBytes(StandardCharsets.UTF_8).length);
             document.put("parts", passages.size());
             document.put("added_at", System.currentTimeMillis());
             long docId = db.insertOrThrow("documents", null, document);
@@ -291,6 +296,153 @@ public final class KnowledgeBase extends SQLiteOpenHelper {
                     .append("\n");
         }
         return result.toString();
+    }
+
+    /**
+     * Encrypted backup streams a normalized JSON snapshot of only the RAG
+     * documents, never GitHub tokens, Metricool OAuth or chat history.
+     * The caller owns the output ZIP stream and closes it after integrity tags.
+     */
+    public int writePortableJson(java.io.OutputStream out) throws Exception {
+        android.util.JsonWriter writer = new android.util.JsonWriter(
+                new java.io.OutputStreamWriter(
+                        new java.io.FilterOutputStream(out) {
+                            @Override public void close() throws java.io.IOException { flush(); }
+                        }, StandardCharsets.UTF_8));
+        int total = 0;
+        writer.beginObject();
+        writer.name("schema").value(1);
+        writer.name("documents").beginArray();
+        SQLiteDatabase db = getReadableDatabase();
+        try (Cursor docs = db.rawQuery(
+                "SELECT _id,name,sha256,size_bytes FROM documents ORDER BY _id ASC LIMIT 30",
+                null)) {
+            while (docs.moveToNext()) {
+                long docId = docs.getLong(0);
+                String name = docs.getString(1);
+                writer.beginObject();
+                writer.name("name").value(name);
+                writer.name("sha256").value(docs.getString(2));
+                writer.name("size_bytes").value(docs.getInt(3));
+                writer.name("segments").beginArray();
+                int sections = 0;
+                try (Cursor segments = db.rawQuery(
+                        "SELECT body FROM passages WHERE doc_key=? ORDER BY CAST(segment AS INTEGER)",
+                        new String[]{Long.toString(docId)})) {
+                    while (segments.moveToNext()) {
+                        if (++sections > MAX_CHUNKS)
+                            throw new IllegalStateException("Индекс содержит слишком много фрагментов.");
+                        writer.value(segments.getString(0));
+                    }
+                }
+                writer.endArray();
+                writer.endObject();
+                total++;
+            }
+        }
+        writer.endArray().endObject();
+        writer.flush();
+        return total;
+    }
+
+    private static void validateArchiveName(String name) {
+        if (name == null || name.length() < 4 || name.length() > 120 ||
+                name.matches("(?s).*[\\p{Cntrl}\\\\/].*"))
+            throw new IllegalArgumentException("Некорректное имя документа в архиве.");
+        String lower = name.toLowerCase(Locale.ROOT);
+        int i = lower.lastIndexOf('.');
+        if (i < 1 || !EXT.contains(lower.substring(i + 1)) ||
+                lower.contains(".env") || lower.contains("password") ||
+                lower.contains("secret") || lower.contains("token") ||
+                lower.contains("credential"))
+            throw new IllegalArgumentException("В архиве найден запрещённый файл.");
+    }
+
+    /** Transaction rollback protects the existing library on bad archive data. */
+    public int restorePortableJson(java.io.InputStream input) throws Exception {
+        android.util.JsonReader reader = new android.util.JsonReader(
+                new java.io.InputStreamReader(input, StandardCharsets.UTF_8));
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        int restored = 0;
+        try {
+            reader.beginObject();
+            if (!reader.hasNext() || !"schema".equals(reader.nextName()) ||
+                    reader.nextInt() != 1 ||
+                    !reader.hasNext() || !"documents".equals(reader.nextName()))
+                throw new IllegalArgumentException("Неизвестный формат резервной копии.");
+            // An authenticated archive is staged and fully verified BEFORE
+            // this restore method is invoked by WolfKnowledgeBackup.
+            db.delete("passages", null, null);
+            db.delete("documents", null, null);
+            reader.beginArray();
+            while (reader.hasNext()) {
+                if (++restored > MAX_DOCS)
+                    throw new IllegalArgumentException("В архиве более 30 документов.");
+                reader.beginObject();
+                if (!"name".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Ошибка заголовка документа.");
+                String name = reader.nextString();
+                validateArchiveName(name);
+                if (!"sha256".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет SHA256 в архиве.");
+                String sha = reader.nextString();
+                if (!sha.matches("[a-f0-9]{64}"))
+                    throw new IllegalArgumentException("Некорректная контрольная сумма.");
+                if (!"size_bytes".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет размера документа.");
+                int size = reader.nextInt();
+                if (size < 15 || size > MAX_BYTES)
+                    throw new IllegalArgumentException("Размер документа вне допустимых границ.");
+                if (!"segments".equals(reader.nextName()))
+                    throw new IllegalArgumentException("Нет фрагментов документа.");
+                ContentValues document = new ContentValues();
+                document.put("name", name);
+                document.put("sha256", sha);
+                document.put("size_bytes", size);
+                document.put("parts", 0);
+                document.put("added_at", System.currentTimeMillis());
+                long id = db.insertOrThrow("documents", null, document);
+                reader.beginArray();
+                int parts = 0;
+                long totalBytes = 0;
+                while (reader.hasNext()) {
+                    if (++parts > MAX_CHUNKS)
+                        throw new IllegalArgumentException("Слишком много фрагментов в архиве.");
+                    String text = reader.nextString();
+                    if (text.length() < 1 || text.length() > CHUNK + 8)
+                        throw new IllegalArgumentException("Повреждён фрагмент документа.");
+                    totalBytes += text.getBytes(StandardCharsets.UTF_8).length;
+                    if (totalBytes > MAX_BYTES * 2L)
+                        throw new IllegalArgumentException("Слишком много данных в документе.");
+                    ContentValues row = new ContentValues();
+                    row.put("doc_key", Long.toString(id));
+                    row.put("segment", parts);
+                    row.put("title", name);
+                    row.put("body", text);
+                    db.insertOrThrow("passages", null, row);
+                }
+                reader.endArray();
+                if (parts < 1)
+                    throw new IllegalArgumentException("Документ без фрагментов.");
+                if (reader.hasNext())
+                    throw new IllegalArgumentException("Неожиданные данные документа.");
+                reader.endObject();
+                ContentValues update = new ContentValues();
+                update.put("parts", parts);
+                db.update("documents", update, "_id=?",
+                        new String[]{Long.toString(id)});
+            }
+            reader.endArray();
+            if (reader.hasNext())
+                throw new IllegalArgumentException("Неизвестные поля архива.");
+            reader.endObject();
+            // JsonReader must hit EOF; a trailing malformed payload is rejected.
+            if (reader.peek() != android.util.JsonToken.END_DOCUMENT)
+                throw new IllegalArgumentException("Лишние данные после архива.");
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        return restored;
     }
 
     public int documentCount() {
