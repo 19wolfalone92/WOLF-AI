@@ -19,6 +19,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -139,8 +140,11 @@ public final class HomeActivity extends Activity {
         header.setBackground(gradient(Color.rgb(22, 37, 58), BG, 0));
         root.addView(header, new LinearLayout.LayoutParams(-1, dp(92)));
 
-        TextView avatar = label("🐺", 30, WHITE, true);
-        header.addView(avatar, new LinearLayout.LayoutParams(dp(50), -2));
+        ImageView avatar = new ImageView(this);
+        avatar.setImageResource(R.drawable.wolf_logo);
+        avatar.setContentDescription("Логотип WOLF AI");
+        avatar.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        header.addView(avatar, new LinearLayout.LayoutParams(dp(50), dp(50)));
         LinearLayout title = new LinearLayout(this);
         title.setOrientation(LinearLayout.VERTICAL);
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
