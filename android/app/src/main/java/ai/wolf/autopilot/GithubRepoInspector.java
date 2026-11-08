@@ -105,6 +105,70 @@ public final class GithubRepoInspector {
         } finally { con.disconnect(); }
     }
 
+    public static final class SourceExcerpt {
+        public final String repo, path, sha, content, url;
+        public final int fromLine, toLine;
+        SourceExcerpt(String repo, String path, String sha, String content,
+                      String url, int fromLine, int toLine) {
+            this.repo=repo; this.path=path; this.sha=sha; this.content=content;
+            this.url=url; this.fromLine=fromLine; this.toLine=toLine;
+        }
+    }
+
+    /**
+     * Explicitly selected file + line window, always read-only. No auto-discovery
+     * of sensitive files and no LLM-supplied arbitrary source location.
+     */
+    public static SourceExcerpt readSource(String repoName, String path,
+                                           int fromLine, String token) throws Exception {
+        if (!permitted(repoName) || path == null || path.length() > 150 ||
+                fromLine < 1 || fromLine > 12000 || !SAFE_FILE.matcher(path).matches() ||
+                path.startsWith("/") || path.contains("..") ||
+                path.startsWith(".") || path.contains("/.") ||
+                path.contains("secret") || path.contains("private") ||
+                path.contains("credential") || path.contains(".env") ||
+                path.contains("password") || path.contains("token") ||
+                !(path.endsWith(".py") || path.endsWith(".java") ||
+                  path.endsWith(".kt") || path.endsWith(".js") ||
+                  path.endsWith(".ts") || path.endsWith(".md") ||
+                  path.endsWith(".xml") || path.endsWith(".json") ||
+                  path.endsWith(".yml") || path.endsWith(".yaml") ||
+                  path.endsWith(".gradle") || path.endsWith(".sh") ||
+                  path.endsWith(".css") || path.endsWith(".html")))
+            throw new IllegalArgumentException(
+                    "Нужен безопасный путь к исходному коду/документу из разрешённого проекта.");
+        JSONObject item = read("/" + repoName + "/contents/" + path, token, 130000);
+        if (!"file".equals(item.optString("type")) ||
+                !"base64".equals(item.optString("encoding")) ||
+                item.optInt("size", 50001) > 50000)
+            throw new IllegalArgumentException("Доступны только текстовые файлы до 50 КБ.");
+        byte[] raw = Base64.decode(item.getString("content"), Base64.DEFAULT);
+        if (raw.length > 50000)
+            throw new IllegalArgumentException("Исходный файл слишком большой.");
+        String text = new String(raw, StandardCharsets.UTF_8);
+        if (text.indexOf('\u0000') >= 0 || GithubBacklog.suspectedSecret(text))
+            throw new IllegalArgumentException("Возможный секрет либо бинарный файл. " +
+                    "Передача такого исходника модели заблокирована.");
+        String[] lines = text.split("\\r?\\n", -1);
+        if (fromLine > lines.length)
+            throw new IllegalArgumentException("Выбранная строка за пределами файла.");
+        StringBuilder excerpt = new StringBuilder();
+        int last = fromLine;
+        for (int i = fromLine - 1; i < lines.length && i < fromLine - 1 + 70; i++) {
+            String row = (i + 1) + " | " + lines[i] + "\\n";
+            if (excerpt.length() + row.length() > 1900) break;
+            excerpt.append(row);
+            last = i + 1;
+        }
+        if (excerpt.length() == 0)
+            throw new IllegalStateException("Не удалось получить окно исходного файла.");
+        return new SourceExcerpt(
+                repoName, path, item.getString("sha"), excerpt.toString(),
+                "https://github.com/" + OWNER + "/" + repoName + "/blob/" +
+                        item.getString("sha") + "/" + path + "#L" + fromLine + "-L" + last,
+                fromLine, last);
+    }
+
     public static String inspect(String repoName, String token) throws Exception {
         if (!permitted(repoName))
             throw new IllegalArgumentException("Репозиторий отсутствует в разрешённом списке.");
