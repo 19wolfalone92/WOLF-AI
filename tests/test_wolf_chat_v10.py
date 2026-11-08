@@ -124,7 +124,7 @@ class WOLFChatFirstContracts(unittest.TestCase):
                        "Видеостудия", "Приватность"):
             self.assertIn(anchor, guide)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '12.1.0'", gradle)
+        self.assertIn("versionName '13.0.0'", gradle)
 
 
 if __name__ == "__main__":
