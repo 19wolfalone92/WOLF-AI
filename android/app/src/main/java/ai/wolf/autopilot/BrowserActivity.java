@@ -29,11 +29,14 @@ import android.widget.TextView;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import org.json.JSONTokener;
 
 /**
  * A real HTTPS-only, user-operated mini-browser.
  * No JavaScript by default, no WebView -> Java bridge, no local file access,
- * no arbitrary automation or injection into third-party web sessions.
+ * explicitly confirmed same-origin, navigation-only actions may run inside
+ * user-authenticated sessions. No credentials, cookies, password fields,
+ * external-domain action, arbitrary scripts or automated form submission.
  */
 public final class BrowserActivity extends Activity {
     private static final int BG = Color.rgb(10, 15, 28);
@@ -205,6 +208,13 @@ public final class BrowserActivity extends Activity {
                 status.setText("⛔ Небезопасный сайт заблокирован.");
             }
         });
+        LinearLayout helper = new LinearLayout(this);
+        helper.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(helper, new LinearLayout.LayoutParams(-1, dp(47)));
+        Button browserAssist = control("🤖 Навигация по кнопке");
+        helper.addView(browserAssist, new LinearLayout.LayoutParams(-1, dp(43)));
+        browserAssist.setOnClickListener(v -> showAssistedNavigation());
+
         root.addView(page, new LinearLayout.LayoutParams(-1, 0, 1f));
         status = new TextView(this);
         status.setTextColor(CYAN);
@@ -250,6 +260,85 @@ public final class BrowserActivity extends Activity {
         });
         String target = getIntent().getStringExtra(EXTRA_TARGET);
         navigate(target == null ? "" : target);
+    }
+
+    private String responseString(String json) {
+        try {
+            Object parsed = new JSONTokener(json == null ? "null" : json).nextValue();
+            return parsed instanceof String ? (String) parsed : "no-result";
+        } catch (Exception ignored) { return "no-result"; }
+    }
+
+    /**
+     * This is a user-directed action in the current WebView session.
+     * User logs in normally inside the browser; WOLF never sees passwords,
+     * cookies or form content. Every navigation requires a preview + consent.
+     */
+    private void showAssistedNavigation() {
+        if (page == null || !javascriptEnabled) {
+            status.setText("Для навигации включи JS для этой вкладки и войди на сайт вручную.");
+            return;
+        }
+        final String expectedOrigin;
+        try { expectedOrigin = BrowserActionPolicy.safeOrigin(page.getUrl()); }
+        catch (Exception error) {
+            status.setText("Автоматизация запрещена на этой странице.");
+            return;
+        }
+        EditText target = new EditText(this);
+        target.setSingleLine(true);
+        target.setTextColor(TEXT);
+        target.setHintTextColor(CYAN);
+        target.setHint("Точное название видимой кнопки или ссылки");
+        new AlertDialog.Builder(this)
+                .setTitle("🤖 Помощник сайта")
+                .setMessage("Сначала войди на сайт вручную. " +
+                        "WOLF может нажать только одну точно совпавшую " +
+                        "видимую кнопку или ссылку на текущем HTTPS-домене. " +
+                        "Он не читает пароли/куки, не заполняет формы, " +
+                        "не нажимает «Оплатить», «Отправить» или «Опубликовать».")
+                .setView(target)
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Найти элемент", (dialog, which) -> {
+                    String label = target.getText().toString().trim();
+                    try {
+                        String preview = BrowserActionPolicy.script(expectedOrigin, label, false);
+                        page.evaluateJavascript(preview, json -> {
+                            if (page == null || isFinishing()) return;
+                            if (!"ready:1".equals(responseString(json))) {
+                                status.setText("Не нашёл ровно одну безопасную кнопку с текстом «" +
+                                        label + "». Попробуй другое название.");
+                                return;
+                            }
+                            new AlertDialog.Builder(this)
+                                    .setTitle("Подтверди один клик")
+                                    .setMessage("Сайт: " + expectedOrigin +
+                                            "\nКнопка: «" + label + "»\n\n" +
+                                            "WOLF только вызовет один клик. " +
+                                            "Результат на сервере не подтверждён. " +
+                                            "На следующей странице новое действие " +
+                                            "потребует отдельного согласия.")
+                                    .setNegativeButton("Отмена", null)
+                                    .setPositiveButton("Нажать один раз", (d,w) -> {
+                                        if (page == null || !javascriptEnabled) return;
+                                        try {
+                                            page.evaluateJavascript(BrowserActionPolicy.script(
+                                                    expectedOrigin, label, true), result -> {
+                                                if (status == null) return;
+                                                String answer = responseString(result);
+                                                status.setText("click-invoked".equals(answer) ?
+                                                        "✓ Нажатие вызвано, результат проверь на сайте." :
+                                                        "Клик не выполнен: " + answer);
+                                            });
+                                        } catch (Exception error) {
+                                            status.setText("Действие заблокировано.");
+                                        }
+                                    }).show();
+                        });
+                    } catch (Exception error) {
+                        status.setText("Нельзя выполнить эту команду: " + error.getMessage());
+                    }
+                }).show();
     }
 
     private void navigate(String query) {
