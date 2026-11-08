@@ -20,9 +20,9 @@ class SupervisedAutonomyV11(unittest.TestCase):
         self.assertIn('android:name=".MetricoolBatchActivity" android:exported="false"', manifest)
         self.assertNotIn("BIND_ACCESSIBILITY_SERVICE", manifest)
         self.assertNotIn("QUERY_ALL_PACKAGES", manifest)
-        self.assertNotIn("RECORD_AUDIO", manifest)
+        self.assertIn("android.permission.RECORD_AUDIO", manifest)
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '11.0.0'", gradle)
+        self.assertIn("versionName '11.1.0'", gradle)
 
     def test_research_is_multi_step_and_source_grounded(self):
         home = source("HomeActivity")
