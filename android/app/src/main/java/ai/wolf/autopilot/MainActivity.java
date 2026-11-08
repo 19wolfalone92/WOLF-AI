@@ -994,7 +994,7 @@ public final class MainActivity extends Activity {
                         async(() -> {
                             LocalToolAgent.Answer result = LocalToolAgent.run(
                                     getApplicationContext(), question, secrets.load(),
-                                    learning, chat.recent(8));
+                                    learning, knowledge, chat.recent(8));
                             return result.text + "\n\n── ЖУРНАЛ ИНСТРУМЕНТОВ ──\n" +
                                     result.trace;
                         }, result -> {
