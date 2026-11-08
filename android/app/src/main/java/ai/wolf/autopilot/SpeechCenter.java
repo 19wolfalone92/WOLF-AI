@@ -1,6 +1,8 @@
 package ai.wolf.autopilot;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
 
@@ -18,6 +20,7 @@ public final class SpeechCenter {
     private TextToSpeech engine;
     private boolean ready;
     private boolean loading;
+    private String queuedText;
 
     public SpeechCenter(Context context) {
         this.context = context.getApplicationContext();
@@ -29,21 +32,35 @@ public final class SpeechCenter {
         if (text.length() > 6000) text = text.substring(0, 6000);
         if (engine == null && !loading) {
             loading = true;
-            TextToSpeech created = new TextToSpeech(context, status -> {
+            queuedText = text;
+            // Queue the first reply while Android initializes the TTS engine.
+            // Never require the user to tap a second time to hear it.
+            engine = new TextToSpeech(context, status -> {
                 synchronized (SpeechCenter.this) {
                     loading = false;
                     ready = status == TextToSpeech.SUCCESS;
-                    if (ready && engine != null) {
-                        engine.setSpeechRate(0.94f);
-                    }
+                    if (ready && engine != null) engine.setSpeechRate(0.94f);
+                    if (!ready) queuedText = null;
+                }
+                if (status == TextToSpeech.SUCCESS) {
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        synchronized (SpeechCenter.this) {
+                            if (queuedText != null && engine != null && ready) {
+                                String pending = queuedText;
+                                queuedText = null;
+                                speak(pending);
+                            }
+                        }
+                    });
                 }
             });
-            engine = created;
-            return "🔊 Голосовой движок Android инициализируется. " +
-                    "Нажми «Озвучить» повторно после загрузки. " +
-                    "Для приватности выбери офлайн-голос в настройках Android.";
+            return "🔊 Голос готовится. Первый ответ будет озвучен автоматически, " +
+                    "когда Android завершит инициализацию.";
         }
-        if (loading) return "Подготавливаю голосовой движок Android…";
+        if (loading) {
+            queuedText = text;
+            return "🔊 Запомнил текст: озвучу после запуска голосового движка.";
+        }
         if (!ready || engine == null)
             return "В установленном Android TTS нет готового русского голоса. " +
                     "Установи русский голос в системных настройках синтеза речи.";
@@ -83,10 +100,12 @@ public final class SpeechCenter {
     }
 
     public synchronized void stop() {
+        queuedText = null;
         if (engine != null) engine.stop();
     }
 
     public synchronized void close() {
+        queuedText = null;
         if (engine != null) {
             engine.stop();
             engine.shutdown();
