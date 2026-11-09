@@ -3,6 +3,7 @@ package ai.wolf.autopilot;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyInfo;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 
 import javax.crypto.Cipher;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
@@ -56,7 +58,7 @@ public final class SecureStore {
         prefs.edit()
                 .putString(CIPHERTEXT, Base64.encodeToString(data, Base64.NO_WRAP))
                 .putString(NONCE, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-                .apply();
+                .commit();
     }
 
     public String load() throws Exception {
@@ -67,6 +69,17 @@ public final class SecureStore {
         cipher.init(Cipher.DECRYPT_MODE, key(),
                 new GCMParameterSpec(128, Base64.decode(iv, Base64.DEFAULT)));
         return new String(cipher.doFinal(Base64.decode(value, Base64.DEFAULT)), StandardCharsets.UTF_8);
+    }
+
+    /** Diagnostic only; the device may use TEE/StrongBox or a software Keystore.
+     * Do not force new key generation or invalidate already saved GitHub PAT.
+     */
+    public boolean isHardwareBacked() throws Exception {
+        if(!configured())return false;
+        KeyInfo info=(KeyInfo)SecretKeyFactory.getInstance(
+                KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+                .getKeySpec(key(), KeyInfo.class);
+        return info.isInsideSecureHardware();
     }
 
     public boolean configured() {
