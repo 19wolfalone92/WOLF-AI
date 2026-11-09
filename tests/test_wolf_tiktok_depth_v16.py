@@ -66,7 +66,8 @@ class DepthAndStudioContracts(unittest.TestCase):
         self.assertIn('cancelStudioPicker()',browser)
         self.assertIn('isOfficialTikTokStudio()',browser)
         self.assertIn('case TIKTOK_STUDIO:',home)
-        self.assertNotIn('Metricool',studio)
+        self.assertNotIn('MetricoolMcp',studio)
+        self.assertNotIn('MetricoolOAuth',studio)
         self.assertNotIn('HfBrainClient',studio)
         self.assertNotIn('document.cookie',browser)
 
