@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, SHORT_PROMPT, RETRY_PREVIOUS, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -27,6 +27,21 @@ public final class WolfCommandRouter {
             return new Decision(Kind.CHAT, "", "Напиши вопрос.");
         String text = raw.trim();
         String q = text.toLowerCase(Locale.ROOT);
+        // A one-character '?' is a request for guidance, not an LLM error.
+        if (q.matches("[?!.…\\\\s]+"))
+            return new Decision(Kind.SHORT_PROMPT,text,
+                    "Дать короткую подсказку без загрузки модели.");
+        if (contains(q, "ты не ответил", "не ответил на предыдущий",
+                "почему не отвечаешь", "где твой ответ", "ты молчишь"))
+            return new Decision(Kind.RETRY_PREVIOUS,text,
+                    "Найти последний вопрос и безопасно повторить ответ.");
+        // These conversational variants must never load 428MB just to list features.
+        if (contains(q, "что ты можешь", "что умеешь делать",
+                "какие у тебя возможности", "на что ты способен",
+                "расскажи о возможностях", "твои функции", "что ты умееш"))
+            return new Decision(Kind.HELP,"",
+                    "Показать реальные возможности прямо в чате.");
+
         if (q.equals("настрой глубину") ||
                 q.equals("настройка глубины") ||
                 q.equals("режимы глубины") ||
