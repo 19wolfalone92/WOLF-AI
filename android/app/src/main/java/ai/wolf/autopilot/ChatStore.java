@@ -30,7 +30,8 @@ public final class ChatStore extends SQLiteOpenHelper {
         if (body == null || body.isEmpty()) return;
         ContentValues row = new ContentValues();
         row.put("role", role);
-        row.put("body", body.substring(0, Math.min(body.length(), 6000)));
+        row.put("body", SensitiveText.forStorage(
+                body.substring(0, Math.min(body.length(), 6000))));
         row.put("created", System.currentTimeMillis());
         SQLiteDatabase db = getWritableDatabase();
         db.insertOrThrow("messages", null, row);
@@ -42,7 +43,9 @@ public final class ChatStore extends SQLiteOpenHelper {
         List<Message> messages = new ArrayList<>();
         try (Cursor c = getReadableDatabase().rawQuery(
                 "SELECT role,body FROM messages ORDER BY _id DESC LIMIT " + max, null)) {
-            while (c.moveToNext()) messages.add(new Message(c.getString(0), c.getString(1)));
+            while (c.moveToNext())
+                messages.add(new Message(c.getString(0),
+                        SensitiveText.forStorage(c.getString(1))));
         }
         Collections.reverse(messages);
         return messages;
@@ -61,7 +64,7 @@ public final class ChatStore extends SQLiteOpenHelper {
             while (cursor.moveToNext()) {
                 messages.put(new org.json.JSONObject()
                         .put("role", cursor.getString(0))
-                        .put("body", cursor.getString(1))
+                        .put("body", SensitiveText.forStorage(cursor.getString(1)))
                         .put("created", cursor.getLong(2)));
             }
         }
@@ -102,7 +105,7 @@ public final class ChatStore extends SQLiteOpenHelper {
                 org.json.JSONObject row = rows.getJSONObject(i);
                 ContentValues values = new ContentValues();
                 values.put("role", row.getString("role"));
-                values.put("body", row.getString("body"));
+                values.put("body", SensitiveText.forStorage(row.getString("body")));
                 values.put("created", row.getLong("created"));
                 db.insertOrThrow("messages", null, values);
             }
