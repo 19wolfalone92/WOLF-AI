@@ -55,7 +55,7 @@ class ForegroundVoiceV111(unittest.TestCase):
 
     def test_version_and_explanatory_documents(self):
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '16.0.0'", gradle)
+        self.assertIn("versionName '16.1.0'", gradle)
         guide = (BASE / "GuideActivity.java").read_text("utf-8")
         self.assertIn("Диалог голосом", guide)
 

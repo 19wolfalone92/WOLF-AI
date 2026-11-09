@@ -73,8 +73,8 @@ class DepthAndStudioContracts(unittest.TestCase):
 
     def test_truthful_release_and_no_remote_privacy_leak(self):
         gradle=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '16.0.0'",gradle)
-        self.assertIn("versionCode 24",gradle)
+        self.assertIn("versionName '16.1.0'",gradle)
+        self.assertIn("versionCode 25",gradle)
         guide=source("GuideActivity")
         self.assertIn("настраиваемая глубина",guide)
         self.assertIn("напрямую в TikTok Studio",guide)

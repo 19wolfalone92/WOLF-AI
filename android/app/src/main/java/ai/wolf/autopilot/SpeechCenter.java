@@ -23,7 +23,24 @@ public final class SpeechCenter {
     private boolean loading;
     private String queuedText;
     private Runnable afterSpeech;
+    private StatusListener statusListener;
     private final Handler mainThread = new Handler(Looper.getMainLooper());
+
+    public interface StatusListener {
+        void onStatus(String message);
+    }
+
+    public synchronized void setStatusListener(StatusListener callback) {
+        statusListener = callback;
+    }
+
+    private void notifyStatus(String value) {
+        mainThread.post(() -> {
+            StatusListener callback;
+            synchronized (SpeechCenter.this) { callback = statusListener; }
+            if (callback != null) callback.onStatus(value);
+        });
+    }
 
     public SpeechCenter(Context context) {
         this.context = context.getApplicationContext();
@@ -47,6 +64,8 @@ public final class SpeechCenter {
             }
             @Override public void onError(String utteranceId) {
                 // Recognition is NOT restarted after TTS failure.
+                notifyStatus("🔈 Android TTS не смог произнести ответ. " +
+                        "Проверь выбранный голос и громкость мультимедиа.");
             }
         });
     }
@@ -70,6 +89,9 @@ public final class SpeechCenter {
                     }
                     if (!ready) queuedText = null;
                 }
+                if (status != TextToSpeech.SUCCESS)
+                    notifyStatus("🔈 Голос Android не инициализировался. " +
+                            "Открой настройки синтеза речи и установи русский голос.");
                 if (status == TextToSpeech.SUCCESS) {
                     new Handler(Looper.getMainLooper()).post(() -> {
                         synchronized (SpeechCenter.this) {
@@ -89,16 +111,25 @@ public final class SpeechCenter {
             queuedText = text;
             return "🔊 Запомнил текст: озвучу после запуска голосового движка.";
         }
-        if (!ready || engine == null)
-            return "В установленном Android TTS нет готового русского голоса. " +
-                    "Установи русский голос в системных настройках синтеза речи.";
-        if (!configureVoice(text))
-            return "Язык ответа недоступен в установленном Android TTS. " +
+        if (!ready || engine == null) {
+            String problem="В установленном Android не удалось запустить TTS. " +
+                    "Открой настройки синтеза речи и установи голос.";
+            notifyStatus(problem);
+            return problem;
+        }
+        if (!configureVoice(text)) {
+            String problem="Язык ответа недоступен в установленном Android TTS. " +
                     "Установи русский или английский голос в системных настройках.";
+            notifyStatus(problem);
+            return problem;
+        }
         String id = "wolf-" + System.currentTimeMillis();
         int result = engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
-        return result == TextToSpeech.SUCCESS ? "🔊 Ответ озвучивается." :
-                "Не удалось запустить синтез речи.";
+        if (result != TextToSpeech.SUCCESS) {
+            notifyStatus("🔈 Android отклонил озвучивание. Проверь TTS и мультимедиа.");
+            return "Не удалось запустить синтез речи.";
+        }
+        return "🔊 Ответ озвучивается.";
     }
 
     private boolean configureVoice(String text) {
@@ -142,5 +173,6 @@ public final class SpeechCenter {
         ready = false;
         loading = false;
         afterSpeech = null;
+        statusListener = null;
     }
 }
