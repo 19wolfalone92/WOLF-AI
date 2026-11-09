@@ -86,7 +86,13 @@ public final class EmbeddedAi {
     public static String check(Context context) throws Exception {
         synchronized (LOCK) {
             Context app = context.getApplicationContext();
-            File imported = ModelVault.active(app);
+            File imported=null;
+            try {
+                imported=ModelVault.active(app);
+            } catch (IllegalStateException invalid) {
+                // Bad imports must never permanently break plain conversation.
+                ModelVault.suspendUnsupported(app, invalid.getMessage());
+            }
             File source = imported == null ? model(app) : imported;
             String path = source.getAbsolutePath();
             if (!path.equals(loadedPath)) {
@@ -94,12 +100,23 @@ public final class EmbeddedAi {
                 if (loadedPath != null) nativeUnload();
                 loadedPath = null;
                 String result = nativeLoad(path);
+                if (result.startsWith("Ошибка") && imported != null) {
+                    // Newly supported formats (e.g. Qwen3.5) may outrun the
+                    // pinned llama.cpp build. Disable, never delete the model.
+                    ModelVault.suspendUnsupported(app, result);
+                    imported=null;
+                    File fallback=model(app);
+                    path=fallback.getAbsolutePath();
+                    result=nativeLoad(path);
+                }
                 if (result.startsWith("Ошибка")) throw new IllegalStateException(result);
                 loadedPath = path;
             }
             return (imported != null ? ModelVault.name(app) :
                     "Qwen2.5-Coder 0.5B (встроенная)") +
-                    ": загружена на устройстве без облачного API.";
+                    ": загружена на устройстве без облачного API."+
+                    (ModelVault.summary(app).contains("Предыдущая модель не запустилась")?
+                    "\n⚠️ Импортированный GGUF был отключён, работает резервная 0.5B." : "");
         }
     }
 
