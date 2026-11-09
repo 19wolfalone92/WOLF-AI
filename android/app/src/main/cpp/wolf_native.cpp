@@ -79,6 +79,7 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring request, jint max_out, jint requested_ctx) {
     std::lock_guard<std::mutex> lock(guard);
     if (!model) return fail(env, "Сначала открой модель.");
+    const auto generation_start = std::chrono::steady_clock::now();
     if (cancel_requested.load(std::memory_order_acquire))
         return fail(env, "Генерация отменена пользователем.");
     std::string prompt = from_jstring(env, request);
@@ -120,10 +121,17 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     llama_batch_ext * batch = llama_batch_ext_init(ctx);
     std::string answer;
     bool ok = true;
+    bool timed_out = false;
     int32_t pos = 0;
 
     for (int32_t i = 0; i < needed; i += 512) {
         if (cancel_requested.load(std::memory_order_acquire)) {
+            ok = false;
+            break;
+        }
+        if (std::chrono::steady_clock::now() - generation_start >
+                std::chrono::seconds(100)) {
+            timed_out = true;
             ok = false;
             break;
         }
@@ -135,6 +143,12 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
 
     for (int i = 0; ok && i < max_tokens && pos < ctx_tokens - 1; i++) {
         if (cancel_requested.load(std::memory_order_acquire)) {
+            ok = false;
+            break;
+        }
+        if (std::chrono::steady_clock::now() - generation_start >
+                std::chrono::seconds(100)) {
+            timed_out = true;
             ok = false;
             break;
         }
@@ -153,6 +167,9 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     llama_free(ctx);
     if (cancel_requested.load(std::memory_order_acquire))
         return fail(env, "Генерация остановлена. Можно отправлять новый вопрос.");
+    if (timed_out)
+        return fail(env, "Нейросеть отвечает дольше 100 секунд. " 
+                         "Выбери более лёгкую Qwen или меньшую глубину.");
     if (!ok) return fail(env, "Ошибка вычисления модели.");
     if (answer.empty()) return env->NewStringUTF("Модель не сформировала ответ. Попробуй короткий запрос.");
     return env->NewStringUTF(answer.c_str());
