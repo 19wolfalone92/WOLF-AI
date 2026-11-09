@@ -98,6 +98,17 @@ public final class AssistedNavigationTest {
                     "Облачный браузер https://example.com?access_token=123");
             throw new AssertionError("Tokenized public URL accepted");
         } catch(IllegalArgumentException expected) { count++; }
+        check(WolfCommandRouter.route("Проведи автономное исследование энергетика").kind ==
+                WolfCommandRouter.Kind.AUTONOMOUS_RESEARCH,
+                "user-approved public research agent route");
+        check(WolfCommandRouter.route("Спроси облачный ИИ: дай план").kind ==
+                WolfCommandRouter.Kind.CLOUD_AI,
+                "explicit cloud model route");
+        check(AssistiveCommandParser.parse("Покажи кнопки приложения").type.equals("inspect"),
+                "read-only local button inspection command");
+        check(WolfCommandRouter.route("Покажи кнопки приложения").kind ==
+                WolfCommandRouter.Kind.UI_AUTOMATION,
+                "button inspection route");
         System.out.println("PASS: " + count + " assisted browser / Android route checks.");
     }
 }

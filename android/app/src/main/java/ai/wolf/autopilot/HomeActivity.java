@@ -204,6 +204,7 @@ public final class HomeActivity extends Activity {
                         "📱 Что WOLF может делать на телефоне",
                         "📅 Пакетные публикации Metricool",
                         "🖱 Управление другими приложениями",
+                        "☁️ Подключить сильную модель Hugging Face",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
@@ -215,8 +216,9 @@ public final class HomeActivity extends Activity {
                         case 4: showPhoneCapabilities(); break;
                         case 5: openBatchPublisher(); break;
                         case 6: handleAssistive("управление приложениями"); break;
-                        case 7: exportAnswer(); break;
-                        case 8: confirmClearChat(); break;
+                        case 7: openCloudBrainSettings(); break;
+                        case 8: exportAnswer(); break;
+                        case 9: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -446,6 +448,12 @@ public final class HomeActivity extends Activity {
             case RESEARCH:
                 confirmResearch(command);
                 break;
+            case AUTONOMOUS_RESEARCH:
+                confirmAutonomousResearch(command);
+                break;
+            case CLOUD_AI:
+                confirmCloudBrain(command);
+                break;
             case CLOUD_BROWSER:
                 confirmCloudBrowser(command);
                 break;
@@ -509,6 +517,39 @@ public final class HomeActivity extends Activity {
                 q.contains("запости");
     }
 
+    private void confirmAutonomousResearch(String command) {
+        String subject=command.trim().replaceFirst(
+                "(?iu)^\\s*(?:проведи автономное исследование|выполни исследование|" +
+                        "собери сравнительный отчёт|собери сравнительный отчет)\\s*[:—-]?\\s*","");
+        try { subject=CloudBrainPolicy.question(subject); }
+        catch(Exception error) {
+            reply("Укажи тему исследования: "+error.getMessage());return;
+        }
+        if(subject.length()>160) {
+            reply("Сократи тему исследования до 160 символов.");return;
+        }
+        final String topic=subject;
+        new AlertDialog.Builder(this)
+                .setTitle("🤖 Запустить публичного исследовательского агента?")
+                .setMessage("Цель: "+topic+"\n\nПлан: 1) два поисковых " +
+                        "запроса в открытый интернет; 2) чтение максимум " +
+                        "четырёх публичных HTTPS-страниц; 3) локальная " +
+                        "сводка Qwen; 4) точные ссылки и отчёт о каждой " +
+                        "проверке. Не будут отправлены история, локальные " +
+                        "заметки, документы, cookies или пароли. " +
+                        "Агент не получает права нажимать кнопки в аккаунтах " +
+                        "или записывать что-либо на внешние сайты.")
+                .setNegativeButton("Отмена",null)
+                .setPositiveButton("Разрешаю исследование",(d,w)->
+                        background(()->PublicResearchAgent.run(
+                                getApplicationContext(),topic,stage->
+                                        runOnUiThread(()->{
+                                            if(!isFinishing()&&!isDestroyed())
+                                                subtitle.setText("🧭 "+stage);
+                                        }))))
+                .show();
+    }
+
     private void confirmResearch(String instruction) {
         String topic = instruction.trim();
         String lower = topic.toLowerCase(Locale.ROOT);
@@ -537,6 +578,53 @@ public final class HomeActivity extends Activity {
                 .setNegativeButton("Отмена", (d,w) -> reply("Исследование отменено."))
                 .setPositiveButton("Исследовать", (d,w) ->
                         background(() -> ResearchReport.run(getApplicationContext(), subject)))
+                .show();
+    }
+
+    private void openCloudBrainSettings() {
+        startActivity(new Intent(this, CloudBrainSettingsActivity.class));
+    }
+
+    private void confirmCloudBrain(String command) {
+        String lower = command.toLowerCase(Locale.ROOT);
+        if (lower.equals("настрой облачный ии") ||
+                lower.equals("подключи облачный ии")) {
+            openCloudBrainSettings();
+            reply("Настройки облачного ИИ открыты. По умолчанию WOLF по-прежнему " +
+                    "обрабатывает обычные вопросы локально.");
+            return;
+        }
+        String question = command.trim().replaceFirst(
+                "(?iu)^\\s*(?:спроси облачный ии|облачный ии:|план облачного ии:)\\s*[:—-]?\\s*", "");
+        try { question = CloudBrainPolicy.question(question); }
+        catch(Exception error) { reply("Облачный запрос отклонён: " + error.getMessage()); return; }
+        final CloudBrainStore vault = new CloudBrainStore(this);
+        if (!vault.configured()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Подключить Hugging Face?")
+                    .setMessage("Без отдельного Hugging Face токена " +
+                            "отправка вопроса в облако невозможна. " +
+                            "Все обычные запросы продолжают работать локально.")
+                    .setNegativeButton("Отмена",null)
+                    .setPositiveButton("Настроить",(d,w)->openCloudBrainSettings())
+                    .show();
+            return;
+        }
+        final String approvedQuestion = question;
+        new AlertDialog.Builder(this)
+                .setTitle("Отправить один вопрос в Hugging Face?")
+                .setMessage("Модель: " + vault.model() +
+                        "\n\nТЕКСТ, КОТОРЫЙ УЙДЁТ В ОБЛАКО:\n" +
+                        approvedQuestion +
+                        "\n\nИстория чата, документы, память, файлы и " +
+                        "GitHub-токен НЕ передаются. Ответ будет только текстом; " +
+                        "не выполнит никаких внешних действий. " +
+                        "Бесплатные кредиты HF ограничены, возможны " +
+                        "действующие платные тарифы. Никаких авто-повторов.")
+                .setNegativeButton("Отмена",(d,w)->reply("Запрос в облако отменён."))
+                .setPositiveButton("Разрешаю один запрос",(d,w)->
+                        background(()->HfBrainClient.ask(getApplicationContext(),
+                                approvedQuestion)))
                 .show();
     }
 
@@ -687,7 +775,10 @@ public final class HomeActivity extends Activity {
         try { plan = AssistiveCommandParser.parse(instruction); }
         catch (Exception error) { reply("Команда не выполнена: " + error.getMessage()); return; }
         if ("status".equals(plan.type)) {
-            reply("🖱 " + WolfAccessibilityService.status());
+            new AlertDialog.Builder(this)
+                    .setTitle("🖱 Локальный статус управления")
+                    .setMessage(WolfAccessibilityService.status())
+                    .setPositiveButton("Закрыть",null).show();
             return;
         }
         if ("cancel".equals(plan.type)) {
@@ -728,6 +819,8 @@ public final class HomeActivity extends Activity {
                 "Нажать видимую кнопку «" + plan.label + "»" :
                 "sequence".equals(plan.type) ?
                 "Выполнить ограниченный маршрут: " + plan.label :
+                "inspect".equals(plan.type) ?
+                "Показать только безопасные видимые названия кнопок" :
                 "Прокрутить один раз";
         new AlertDialog.Builder(this)
                 .setTitle("sequence".equals(plan.type) ?
@@ -737,7 +830,7 @@ public final class HomeActivity extends Activity {
                         "WOLF попробует выполнить только подтверждённые " +
                         ("sequence".equals(plan.type) ?
                                 "пункты маршрута (до 4) в одном приложении. " :
-                                "одно действие в первом доступном приложении. ") +
+                                "одно наблюдение/действие в первом доступном приложении. ") +
                         "Действия в системных настройках, финансовых " +
                         "приложениях, пароли и отправка данных запрещены. " +
                         "Если кнопка не найдена однозначно, действие отменится.")

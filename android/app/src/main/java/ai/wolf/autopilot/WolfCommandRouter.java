@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -31,6 +31,14 @@ public final class WolfCommandRouter {
                 "как пользоваться", "помощь", "/help", "расскажи о себе"))
             return new Decision(Kind.HELP, "", "Показать возможности и ограничения.");
 
+        if (q.startsWith("спроси облачный ии") ||
+                q.startsWith("спроси облачный иИ".toLowerCase(Locale.ROOT)) ||
+                q.startsWith("облачный ии:") ||
+                q.startsWith("план облачного ии:") ||
+                q.equals("настрой облачный ии") ||
+                q.equals("подключи облачный ии"))
+            return new Decision(Kind.CLOUD_AI,text,
+                    "Отправить отдельно подтверждённый запрос в Hugging Face.");
         // Real remote CPU Chromium runs only after explicit user approval.
         // A public cloud browser is intentionally distinct from an authenticated
         // user-operated browser and never gets private cookies or passwords.
@@ -69,6 +77,12 @@ public final class WolfCommandRouter {
                 query = "";
             return new Decision(Kind.WEB_SEARCH, query, "Поиск в браузере.");
         }
+        if (q.startsWith("проведи автономное исследование") ||
+                q.startsWith("выполни исследование") ||
+                q.startsWith("собери сравнительный отчёт") ||
+                q.startsWith("собери сравнительный отчет"))
+            return new Decision(Kind.AUTONOMOUS_RESEARCH,text,
+                    "Автономно выполнить два публичных поиска, проверить страницы и составить отчёт.");
         // Explicit deep-research intent triggers a multi-step, source-grounded
         // report with separate consent, never silent crawling of private chats.
         if (contains(q, "исследуй тему", "сделай исследование",
@@ -90,6 +104,9 @@ public final class WolfCommandRouter {
         if (q.equals("управление приложениями") ||
                 q.equals("включи управление приложениями") ||
                 q.equals("статус управления") || q.equals("проверить управление") ||
+                q.equals("покажи кнопки приложения") ||
+                q.equals("посмотреть кнопки приложения") ||
+                q.equals("список кнопок приложения") ||
                 q.equals("отмени управление") || q.equals("останови управление") ||
                 q.startsWith("нажми кнопку ") || q.startsWith("нажми в приложении ") ||
                 q.startsWith("маршрут в приложении ") ||
