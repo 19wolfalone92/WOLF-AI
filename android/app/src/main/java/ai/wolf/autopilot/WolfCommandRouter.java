@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -77,6 +77,12 @@ public final class WolfCommandRouter {
                 query = "";
             return new Decision(Kind.WEB_SEARCH, query, "Поиск в браузере.");
         }
+        if (q.startsWith("проведи автономное исследование") ||
+                q.startsWith("выполни исследование") ||
+                q.startsWith("собери сравнительный отчёт") ||
+                q.startsWith("собери сравнительный отчет"))
+            return new Decision(Kind.AUTONOMOUS_RESEARCH,text,
+                    "Автономно выполнить два публичных поиска, проверить страницы и составить отчёт.");
         // Explicit deep-research intent triggers a multi-step, source-grounded
         // report with separate consent, never silent crawling of private chats.
         if (contains(q, "исследуй тему", "сделай исследование",
