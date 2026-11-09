@@ -116,7 +116,7 @@ public final class WolfAccessibilityService extends AccessibilityService {
         if (!AssistivePolicy.allowedPackage(app, getPackageName())) return;
         if ("inspect".equals(request.type)) {
             pending = null;
-            lastResult = "🔎 Доступные безопасные элементы в " + app + ":\\n" +
+            lastResult = "🔎 Доступные безопасные элементы в " + app + ":\n" +
                     listNavigationLabels(root);
             return;
         }
@@ -184,7 +184,7 @@ public final class WolfAccessibilityService extends AccessibilityService {
                 if(label==null || label.length()==0)label=node.getText();
                 String display=label==null?"":label.toString().trim();
                 if(display.length()<=70 && AssistivePolicy.allowedLabel(display))
-                    seen.add(display.replace('\\n',' '));
+                    seen.add(display.replace('\n',' '));
             }
             for(int i=0;i<node.getChildCount();i++) {
                 AccessibilityNodeInfo child=node.getChild(i);
@@ -194,7 +194,7 @@ public final class WolfAccessibilityService extends AccessibilityService {
         if(seen.isEmpty())return "Нет доступных безопасных кнопок. " +
                 "Приложение может скрывать элементы от Accessibility.";
         StringBuilder out=new StringBuilder();
-        for(String value:seen)out.append("• ").append(value).append("\\n");
+        for(String value:seen)out.append("• ").append(value).append("\n");
         return out.toString();
     }
 
