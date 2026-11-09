@@ -1494,7 +1494,26 @@ public final class HomeActivity extends Activity {
     @Override protected void onStop() {
         // No app switching, screen-off or background microphone operation.
         if (voiceSession) stopVoiceSession();
+        // Ask native decode to stop; release llama.cpp/GGUF mmap on a worker.
+        // Never wait for model lock on Android UI. Pending HTTP/GitHub writes
+        // are NOT automatically retried or claimed rolled back.
+        EmbeddedAi.cancelCurrent();
+        EmbeddedAi.unloadWhenIdle();
         super.onStop();
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if(level>=TRIM_MEMORY_RUNNING_LOW) {
+            EmbeddedAi.cancelCurrent();
+            EmbeddedAi.unloadWhenIdle();
+        }
+    }
+
+    @Override public void onLowMemory() {
+        super.onLowMemory();
+        EmbeddedAi.cancelCurrent();
+        EmbeddedAi.unloadWhenIdle();
     }
 
     @Override protected void onDestroy() {
