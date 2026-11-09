@@ -231,7 +231,8 @@ public final class HomeActivity extends Activity {
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки",
                         "🔊 Проверить голос WOLF (тест Android TTS)",
-                        "📱 Реальные параметры телефона и подбор ИИ"
+                        "📱 Реальные параметры телефона и подбор ИИ",
+                        "⚡ Вернуть быструю встроенную Qwen 0.5B"
                 }, (dialog, which) -> {
                     switch (which) {
                         case 0: openGuide(); break;
@@ -250,6 +251,7 @@ public final class HomeActivity extends Activity {
                         case 13: confirmClearChat(); break;
                         case 14: testSpeech(); break;
                         case 15: openPhoneAiProfile(); break;
+                        case 16: confirmFastModel(); break;
                     }
                 }).show());
 
@@ -560,6 +562,9 @@ public final class HomeActivity extends Activity {
         addMessage(true, command, true);
         WolfCommandRouter.Decision decision = WolfCommandRouter.route(command);
         switch (decision.kind) {
+            case FAST_MODEL:
+                confirmFastModel();
+                break;
             case PHONE_PROFILE:
                 openPhoneAiProfile();
                 reply("📱 Открыл диагностику твоего телефона. " +
@@ -834,6 +839,28 @@ public final class HomeActivity extends Activity {
         openDepthSettings();
         reply("Открыл настройки глубины: пресеты, 1–4 прохода, " +
                 "128–768 токенов и переключатель для всех обычных вопросов.");
+    }
+
+    private void confirmFastModel() {
+        new AlertDialog.Builder(this)
+                .setTitle("⚡ Вернуться к быстрой Qwen 0.5B?")
+                .setMessage("Если модель Qwen3.5 2B/4B работает слишком " +
+                        "долго или не отвечает, переключись на встроенную 0.5B. " +
+                        "Импортированный GGUF останется на телефоне, " +
+                        "но больше не будет загружаться при следующем ответе.")
+                .setNegativeButton("Отмена",null)
+                .setPositiveButton("Переключить",(d,w)->{
+                    if(busy)cancelBackground("Переключаемся на быструю модель.");
+                    try {
+                        ModelVault.suspendUnsupported(this,
+                                "Отключена пользователем ради быстрого чата.");
+                        reply("✅ Встроенная Qwen 0.5B снова выбрана. " +
+                                "Теперь напиши «Привет», чтобы проверить ответ. " +
+                                "Большая модель не удалена.");
+                    } catch(Exception error) {
+                        reply("Не удалось переключить модель: "+error.getMessage());
+                    }
+                }).show();
     }
 
     private void openPhoneAiProfile() {
