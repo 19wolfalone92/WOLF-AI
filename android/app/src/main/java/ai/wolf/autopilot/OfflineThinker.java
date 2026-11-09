@@ -38,8 +38,11 @@ public final class OfflineThinker {
                              List<ChatStore.Message> history,
                              Progress callback,ThinkingDepth.Settings depth) throws Exception {
         final String goal=task(question);
-        final int stages=ThinkingDepth.clampSteps(depth.steps);
-        final int tokens=ThinkingDepth.clampTokens(depth.tokens);
+        final LocalResourcePolicy resources=LocalResourceGuard.read(context);
+        final int stages=resources.steps(ThinkingDepth.clampSteps(depth.steps));
+        final int tokens=resources.tokens(ThinkingDepth.clampTokens(depth.tokens));
+        if(callback!=null && resources.level!=LocalResourcePolicy.Level.NORMAL)
+            callback.stage(resources.warning());
         String plan="";
         if(stages>=2) {
             if(callback!=null)callback.stage("1/"+stages+" · Планирование");
@@ -98,6 +101,8 @@ public final class OfflineThinker {
             }
         }
         StringBuilder result=new StringBuilder();
+        if(resources.level!=LocalResourcePolicy.Level.NORMAL)
+            result.append(resources.warning()).append("\n\n");
         result.append("🧠 WOLF · локальная глубина ").append(stages)
                 .append("/4 · ").append(tokens).append(" токенов · 0 ₽\\n\\n");
         if(stages>=2)result.append("🧭 План:\\n").append(plan).append("\\n\\n");
