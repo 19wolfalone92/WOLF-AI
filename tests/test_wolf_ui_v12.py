@@ -71,7 +71,8 @@ class WOLF12AssistedAutonomy(unittest.TestCase):
         service=java("WolfAccessibilityService")
         self.assertNotIn("Runtime.getRuntime().exec", service)
         self.assertNotIn("getText().toString()", service)
-        self.assertIn("!node.isPassword()", service)
+        self.assertIn("AssistivePolicy.isSensitiveField(", service)
+        self.assertIn("hasSensitiveField(root)", service)
         self.assertIn("AssistivePolicy.allowedPackage(app, getPackageName())", service)
 
     def test_actual_jvm_release_gate(self):
