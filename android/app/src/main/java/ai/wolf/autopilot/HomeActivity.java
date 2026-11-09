@@ -219,7 +219,8 @@ public final class HomeActivity extends Activity {
                         "🎬 TikTok Studio · без Metricool",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки",
-                        "🔊 Проверить голос WOLF (тест Android TTS)"
+                        "🔊 Проверить голос WOLF (тест Android TTS)",
+                        "📱 Реальные параметры телефона и подбор ИИ"
                 }, (dialog, which) -> {
                     switch (which) {
                         case 0: openGuide(); break;
@@ -237,6 +238,7 @@ public final class HomeActivity extends Activity {
                         case 12: exportAnswer(); break;
                         case 13: confirmClearChat(); break;
                         case 14: testSpeech(); break;
+                        case 15: openPhoneAiProfile(); break;
                     }
                 }).show());
 
@@ -494,6 +496,14 @@ public final class HomeActivity extends Activity {
         addMessage(true, command, true);
         WolfCommandRouter.Decision decision = WolfCommandRouter.route(command);
         switch (decision.kind) {
+            case PHONE_PROFILE:
+                openPhoneAiProfile();
+                reply("📱 Открыл диагностику твоего телефона. " +
+                        "WOLF считывает RAM, доступную память, процессор, " +
+                        "место на диске и температуру через Android " +
+                        "и рекомендует бесплатную локальную модель. " +
+                        "Данные остаются на телефоне.");
+                break;
             case HELP:
                 // Do not launch a second screen or a 428MB GGUF for a simple
                 // question the user expects us to answer immediately.
@@ -612,7 +622,7 @@ public final class HomeActivity extends Activity {
                 if (isGitHubQuestion(command)) confirmGitHubRead(command);
                 else if(ThinkingDepth.load(this).automatic)runDeepLocal(command);
                 else background(() -> DocumentAssistant.ask(getApplicationContext(),
-                        command, documents, learning, chat.recent(8)).text);
+                        command, documents, learning, chat.recent(12)).text);
                 break;
         }
     }
@@ -760,6 +770,10 @@ public final class HomeActivity extends Activity {
         openDepthSettings();
         reply("Открыл настройки глубины: пресеты, 1–4 прохода, " +
                 "128–768 токенов и переключатель для всех обычных вопросов.");
+    }
+
+    private void openPhoneAiProfile() {
+        startActivity(new Intent(this,PhoneAiProfileActivity.class));
     }
 
     private void openOfflineModelCatalog() {
