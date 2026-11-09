@@ -25,6 +25,38 @@ public final class ChatStore extends SQLiteOpenHelper {
     }
     @Override public void onUpgrade(SQLiteDatabase db, int from, int to) {}
 
+    /** Best-effort scrub of credentials saved by older WOLF releases. */
+    @Override public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        if(db.isReadOnly())return;
+        db.execSQL("PRAGMA secure_delete=ON");
+        java.util.ArrayList<Long> ids=new java.util.ArrayList<>();
+        java.util.ArrayList<String> sanitized=new java.util.ArrayList<>();
+        try(Cursor cursor=db.rawQuery("SELECT _id,body FROM messages",null)) {
+            while(cursor.moveToNext()) {
+                String original=cursor.getString(1);
+                String cleaned=SensitiveText.forStorage(original);
+                if(!cleaned.equals(original)) {
+                    ids.add(cursor.getLong(0));
+                    sanitized.add(cleaned);
+                }
+            }
+        }
+        if(ids.isEmpty())return;
+        db.beginTransaction();
+        try {
+            for(int i=0;i<ids.size();i++) {
+                ContentValues values=new ContentValues();
+                values.put("body",sanitized.get(i));
+                db.update("messages",values,"_id=?",
+                        new String[]{String.valueOf(ids.get(i))});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     public void add(String role, String body) {
         if (!("user".equals(role) || "assistant".equals(role))) throw new IllegalArgumentException("Invalid chat role");
         if (body == null || body.isEmpty()) return;
