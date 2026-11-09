@@ -67,8 +67,8 @@ class UserVisibleResponseAndVoice(unittest.TestCase):
 
     def test_version_16_1(self):
         version=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '17.2.0'",version)
-        self.assertIn("versionCode 28",version)
+        self.assertIn("versionName '17.3.0'",version)
+        self.assertIn("versionCode 29",version)
         workflow=Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn("WolfResponseRecoveryTest.java",workflow)
 
