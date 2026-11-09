@@ -22,6 +22,16 @@ public final class WolfCommandRouterTest {
         assertKind("Объясни закон Ома", WolfCommandRouter.Kind.CHAT);
         assertKind("Сколько будет 2+2?", WolfCommandRouter.Kind.CHAT);
         assertKind("Что ты умеешь?", WolfCommandRouter.Kind.HELP);
+        assertKind("Что ты можешь ?", WolfCommandRouter.Kind.HELP);
+        assertKind("Что ты можешь делать?", WolfCommandRouter.Kind.HELP);
+        assertKind("Какие у тебя возможности?", WolfCommandRouter.Kind.HELP);
+        assertKind("На что ты способен?", WolfCommandRouter.Kind.HELP);
+        assertKind("?", WolfCommandRouter.Kind.SHORT_PROMPT);
+        assertKind("??", WolfCommandRouter.Kind.SHORT_PROMPT);
+        assertKind("Ты не ответил на предыдущий вопрос",
+                WolfCommandRouter.Kind.RETRY_PREVIOUS);
+        assertKind("Почему не отвечаешь?",
+                WolfCommandRouter.Kind.RETRY_PREVIOUS);
         assertKind("Найди в интернете новости о спутниках",
                 WolfCommandRouter.Kind.WEB_SEARCH);
         assertKind("Поищи в сети исследования по квантовым компьютерам",
