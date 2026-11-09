@@ -68,7 +68,7 @@ public final class OfflineModelCatalog {
                 entry.minBytes >= 400_000_000L &&
                 entry.maxBytes <= 3_600_000_000L &&
                 entry.minBytes < entry.maxBytes &&
-                entry.downloadName.matches("wolf-qwen3-[a-z0-9.-]+\\.gguf");
+                entry.downloadName.matches("wolf-qwen3(?:\\.5)?-[a-z0-9.-]+\\.gguf");
     }
 
     public static String describe(Entry entry) {
