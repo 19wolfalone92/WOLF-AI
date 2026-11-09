@@ -55,10 +55,11 @@ public final class SecureStore {
         Cipher cipher = Cipher.getInstance(TRANSFORMATION);
         cipher.init(Cipher.ENCRYPT_MODE, key());
         byte[] data = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
-        prefs.edit()
+        if (!prefs.edit()
                 .putString(CIPHERTEXT, Base64.encodeToString(data, Base64.NO_WRAP))
                 .putString(NONCE, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
-                .commit();
+                .commit())
+            throw new IllegalStateException("Не удалось сохранить зашифрованный GitHub-токен.");
     }
 
     public String load() throws Exception {
