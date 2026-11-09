@@ -6,9 +6,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <atomic>
 
 namespace {
 std::mutex guard;
+// UI cancellation must never wait on the long-running native mutex.
+std::atomic<bool> cancel_requested{false};
 llama_model * model = nullptr;
 bool backend = false;
 std::string loaded_path;
@@ -60,10 +63,24 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeLoad(JNIEnv * env, jclass, jstring path)
     return env->NewStringUTF("GGUF загружен в память");
 }
 
+extern "C" JNIEXPORT void JNICALL
+Java_ai_wolf_autopilot_EmbeddedAi_nativeCancel(JNIEnv *, jclass) {
+    // No guard lock: a GPU/CPU decode can be cancelled from the UI thread.
+    cancel_requested.store(true, std::memory_order_release);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_ai_wolf_autopilot_EmbeddedAi_nativeResetCancel(JNIEnv *, jclass) {
+    // Java calls this ONLY when holding EmbeddedAi.LOCK, serializing inference.
+    cancel_requested.store(false, std::memory_order_release);
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring request, jint max_out, jint requested_ctx) {
     std::lock_guard<std::mutex> lock(guard);
     if (!model) return fail(env, "Сначала открой модель.");
+    if (cancel_requested.load(std::memory_order_acquire))
+        return fail(env, "Генерация отменена пользователем.");
     std::string prompt = from_jstring(env, request);
     if (prompt.empty() || prompt.size() > 13500) return fail(env, "Слишком длинный контекст. Уменьшите историю или вопрос.");
     int max_tokens = std::max(32, std::min((int) max_out, 768));
@@ -106,6 +123,10 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     int32_t pos = 0;
 
     for (int32_t i = 0; i < needed; i += 512) {
+        if (cancel_requested.load(std::memory_order_acquire)) {
+            ok = false;
+            break;
+        }
         int32_t chunk = std::min((int32_t)512, needed - i);
         fill_batch(batch, tokens.data() + i, chunk, pos);
         if (llama_process(ctx, LLAMA_PROCESS_TYPE_DECODE, batch) != 0) { ok = false; break; }
@@ -113,6 +134,10 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     }
 
     for (int i = 0; ok && i < max_tokens && pos < ctx_tokens - 1; i++) {
+        if (cancel_requested.load(std::memory_order_acquire)) {
+            ok = false;
+            break;
+        }
         llama_token next = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
         int need = llama_token_to_piece(vocab, next, nullptr, 0, 0, true);
@@ -126,6 +151,8 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
     llama_batch_ext_free(batch);
     llama_sampler_free(sampler);
     llama_free(ctx);
+    if (cancel_requested.load(std::memory_order_acquire))
+        return fail(env, "Генерация остановлена. Можно отправлять новый вопрос.");
     if (!ok) return fail(env, "Ошибка вычисления модели.");
     if (answer.empty()) return env->NewStringUTF("Модель не сформировала ответ. Попробуй короткий запрос.");
     return env->NewStringUTF(answer.c_str());
