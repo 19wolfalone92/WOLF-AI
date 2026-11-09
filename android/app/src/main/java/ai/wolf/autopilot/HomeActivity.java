@@ -845,10 +845,14 @@ public final class HomeActivity extends Activity {
     }
 
     private void runDeepLocal(String command) {
+        final long request=activeRequestSerial+1;
         background(()->OfflineThinker.run(getApplicationContext(),
                 command,documents,learning,chat.recent(8),stage->
                         runOnUiThread(()->{
-                            if(!isFinishing()&&!isDestroyed())
+                            // Delayed progress from a cancelled run must never
+                            // overwrite the new prompt/status.
+                            if(request==activeRequestSerial && busy &&
+                                    !isFinishing()&&!isDestroyed())
                                 subtitle.setText("🧠 "+stage);
                         })));
     }
