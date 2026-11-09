@@ -66,6 +66,12 @@ public final class WolfPrivacyResourceTest {
         check(CommandParser.validTaskUid("w1234567890abcdef1234567890abcdef"),
                 "UID format");
         check(!CommandParser.validTaskUid("manual"),"manual not a mobile UID");
+        check(SafeNetworkRetry.retryGetStatus(429,0),"HTTP 429 read retry");
+        check(SafeNetworkRetry.retryGetStatus(503,1),"HTTP 503 read retry");
+        check(!SafeNetworkRetry.retryGetStatus(400,0),"bad request not retried");
+        check(!SafeNetworkRetry.retryGetStatus(503,2),"bounded attempts");
+        check(SafeNetworkRetry.delayMs(0)==250 &&
+                SafeNetworkRetry.delayMs(1)==500,"exponential GET-only backoff");
         System.out.println("PASS "+count+" resource/privacy/contract policy cases");
     }
 }
