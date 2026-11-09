@@ -218,7 +218,8 @@ public final class HomeActivity extends Activity {
                         "🧠 Настроить глубину ответов WOLF",
                         "🎬 TikTok Studio · без Metricool",
                         "💾 Сохранить последний ответ в файл",
-                        "🗑 Очистить историю переписки"
+                        "🗑 Очистить историю переписки",
+                        "🔊 Проверить голос WOLF (тест Android TTS)"
                 }, (dialog, which) -> {
                     switch (which) {
                         case 0: openGuide(); break;
@@ -235,6 +236,7 @@ public final class HomeActivity extends Activity {
                         case 11: openTikTokStudio(); break;
                         case 12: exportAnswer(); break;
                         case 13: confirmClearChat(); break;
+                        case 14: testSpeech(); break;
                     }
                 }).show());
 
@@ -300,7 +302,7 @@ public final class HomeActivity extends Activity {
         });
 
         voiceAnswer = button(aloud ?
-                "🔊 Ответ вслух: вкл" : "🔈 Ответ вслух: выкл", false);
+                "🔊 Ответ вслух: вкл" : "🔊 Проверить голос", false);
         LinearLayout.LayoutParams voiceSize = new LinearLayout.LayoutParams(0, dp(41), 1.25f);
         voiceSize.setMargins(dp(9), 0, 0, 0);
         bottom.addView(voiceAnswer, voiceSize);
@@ -308,7 +310,7 @@ public final class HomeActivity extends Activity {
             aloud = !aloud;
             getSharedPreferences("wolf_voice_v1", MODE_PRIVATE).edit()
                     .putBoolean("read_replies_aloud", aloud).apply();
-            voiceAnswer.setText(aloud ? "🔊 Ответ вслух: вкл" : "🔈 Ответ вслух: выкл");
+            voiceAnswer.setText(aloud ? "🔊 Ответ вслух: вкл" : "🔊 Проверить голос");
             if (!aloud) {
                 voiceSession = false;
                 refreshVoiceMode();
@@ -399,6 +401,13 @@ public final class HomeActivity extends Activity {
         return result.startsWith("В установленном Android") ||
                 result.startsWith("Язык ответа недоступен") ||
                 result.startsWith("Не удалось");
+    }
+
+    private void testSpeech() {
+        String status = speaker.speak(
+                "Привет! Я WOLF AI. Это проверка моего голоса.");
+        subtitle.setText(status);
+        if (isTtsError(status)) showVoiceSettings(status);
     }
 
     private void showVoiceSettings(String problem) {
