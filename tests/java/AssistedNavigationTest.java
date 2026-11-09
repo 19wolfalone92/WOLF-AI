@@ -24,6 +24,19 @@ public final class AssistedNavigationTest {
                 "system settings denied");
         check(AssistivePolicy.allowedPackage("com.example.reader","ai.wolf.autopilot"),
                 "ordinary apps permitted after confirmation");
+        check(AssistivePolicy.safeClickableContainer(
+                "android.widget.Button", "Профиль", ""), "normal button safe");
+        check(AssistivePolicy.safeClickableContainer(
+                "android.widget.FrameLayout", "", ""), "unlabelled wrapper allowed");
+        check(!AssistivePolicy.safeClickableContainer(
+                "android.widget.EditText", "Профиль", ""), "no input field");
+        check(!AssistivePolicy.safeClickableContainer(
+                "android.widget.Button", "Оплатить", "Профиль"), "no payment parent");
+        check(!AssistivePolicy.safeClickableContainer(
+                "android.widget.Button", "Профиль", "Publish"), "no publish ancestor");
+        check(!AssistivePolicy.safeClickableContainer(
+                "android.webkit.WebView", "", "Профиль"), "no WebView click");
+
         check(AssistiveCommandParser.parse("Нажми кнопку Профиль").label.equals("Профиль"),
                 "target extraction");
         check(AssistiveCommandParser.parse("Пролистай приложение").type.equals("scroll"),
