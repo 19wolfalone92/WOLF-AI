@@ -292,6 +292,7 @@ public final class TaskStore extends SQLiteOpenHelper {
             if (row.length() != 11 ||
                     body.trim().length() < 3 || body.length() > 600 ||
                     GithubBacklog.suspectedSecret(body) ||
+                    SensitiveText.containsCredential(body) ||
                     !CommandParser.validProject(project) ||
                     !("audit".equals(mode) || "test".equals(mode)) ||
                     !uid.matches("w[a-f0-9]{32}") || !unique.add(uid) ||
