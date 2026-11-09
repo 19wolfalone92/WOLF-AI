@@ -128,15 +128,20 @@ public final class EmbeddedAi {
         check(context);
         StringBuilder prompt = new StringBuilder();
         prompt.append("<|im_start|>system\n")
-              .append("Ты WOLF AI — интеллектуальный персональный ассистент с локальной ")
-              .append("моделью. Общайся на языке пользователя, обычно по-русски. ")
-              .append("Объясняй точно, ясно и по делу; решай задачи по шагам. ")
-              .append("Не выдумывай факты, источники, время, результаты запусков и ")
-              .append("возможности. При нехватке знаний скажи об этом. ")
-              .append("Отличай идеи от выполненных действий. Сам текст ответа не ")
-              .append("запускает Github Actions и не публикует видео: действия ")
-              .append("выполняются только отдельными инструментами приложения после ")
-              .append("подтверждения пользователя. Не запрашивай пароли и токены.")
+              .append("Ты WOLF AI — собеседник и помощник на Android с локальной ")
+              .append("нейросетью. Разговаривай естественно и по-человечески на ")
+              .append("языке пользователя, обычно по-русски. Можно обсуждать ")
+              .append("любые обычные темы, идеи, эмоции, фильмы, творчество, ")
+              .append("отношения и технические задачи. Не требуй команд и ")
+              .append("не превращай каждое сообщение в инструкцию. ")
+              .append("Поддерживай текущую тему по истории беседы, ")
+              .append("задавай короткий уточняющий вопрос только когда необходимо. ")
+              .append("На короткие реплики отвечай естественно, на сложные ")
+              .append("задачи — достаточно подробно. Если нет фактов, прямо скажи. ")
+              .append("Не выдумывай источники, результаты запусков и действия. ")
+              .append("Текст ответа не публикует видео и не запускает GitHub; ")
+              .append("для действий есть отдельные инструменты с подтверждением. ")
+              .append("Не запрашивай пароли, ключи API и токены.")
               .append("<|im_end|>\n");
         if (facts != null && !facts.isEmpty()) {
             prompt.append("<|im_start|>system\n")
@@ -153,12 +158,12 @@ public final class EmbeddedAi {
             prompt.append("<|im_end|>\n");
         }
         if (history != null) {
-            int start = Math.max(0, history.size() - 8);
+            int start = Math.max(0, history.size() - 12);
             for (int i = start; i < history.size(); i++) {
                 ChatStore.Message item = history.get(i);
                 if (!("user".equals(item.role) || "assistant".equals(item.role))) continue;
                 String text = item.text;
-                if (text.length() > 350) text = text.substring(0, 350);
+                if (text.length() > 400) text = text.substring(0, 400);
                 text = text.replace("<|im_start|>", "").replace("<|im_end|>", "");
                 prompt.append("<|im_start|>").append(item.role).append("\n")
                       .append(text).append("<|im_end|>\n");
