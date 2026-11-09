@@ -149,6 +149,22 @@ jobs:
         shell: bash
         run: |
           python3 -B -m unittest discover -s tests -p 'test_wolf_voice_chat_v16_1.py' -v
+      - name: Test Samsung memory selection, Qwen3.5 SHA256 and free-topic routing on JVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-phone-v17"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-phone-v17" \
+            android/app/src/main/java/ai/wolf/autopilot/OfflineModelCatalog.java \
+            android/app/src/main/java/ai/wolf/autopilot/DeviceAiProfile.java \
+            android/app/src/main/java/ai/wolf/autopilot/WolfCommandRouter.java \
+            tests/java/WolfPhoneProfileTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-phone-v17" \
+            ai.wolf.autopilot.WolfPhoneProfileTest
+      - name: Audit real Android hardware introspection and llama.cpp context safeguards
+        shell: bash
+        run: |
+          python3 -B -m unittest discover -s tests -p 'test_wolf_phone_llama_v17.py' -v
       - name: Verify REAL WOLF workspace backup encryption on JVM
         shell: bash
         run: |
