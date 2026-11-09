@@ -39,6 +39,36 @@ public final class CloudBrainSettingsActivity extends Activity {
         root.setBackgroundColor(Color.rgb(10,15,28));
         scroll.addView(root);setContentView(scroll);
         root.addView(text("☁️ Умная модель Hugging Face",22));
+        TextView budget=text(CostGuard.freeOnly(this)?
+                "🛡 0 ₽ · облачные вычисления заблокированы" :
+                "⚠️ Облачные запросы разрешены. Проверяй тарифы Hugging Face.",16);
+        root.addView(budget);
+        Button switchMode=button("Изменить режим расходов");
+        root.addView(switchMode);
+        switchMode.setOnClickListener(v->{
+            if(!CostGuard.freeOnly(this)) {
+                CostGuard.setFreeOnly(this,true);
+                budget.setText("🛡 0 ₽ · облачные вычисления заблокированы");
+                return;
+            }
+            new AlertDialog.Builder(this)
+                    .setTitle("Разрешить платные облачные API?")
+                    .setMessage("WOLF не покупает подписку и не списывает деньги сам, " +
+                            "но Hugging Face может использовать кредитный баланс или " +
+                            "платный биллинг аккаунта. В этом режиме разрешаются " +
+                            "только отдельно подтверждённые запросы. " +
+                            "Безопаснее оставить 0 ₽, пока нет необходимости.")
+                    .setNegativeButton("Оставить 0 ₽",null)
+                    .setPositiveButton("Разрешить облако",(d,w)->{
+                        CostGuard.setFreeOnly(this,false);
+                        budget.setText("⚠️ Облачные запросы разрешены. " +
+                                "Проверяй тарифы Hugging Face.");
+                    }).show();
+        });
+        root.addView(text("Начальный режим — строго 0 ₽: все облачные " +
+                "LLM-вызовы заблокированы программно до твоего отдельного согласия. " +
+                "Сильную локальную Qwen3 1.7B / 4B можно скачать бесплатно " +
+                "по Wi-Fi в каталоге моделей WOLF.",14));
         root.addView(text("По умолчанию все сообщения остаются у локальной Qwen. " +
                 "Подключи отдельный токен Hugging Face с доступом к Inference Providers. " +
                 "Для облачного запроса используй команду «Спроси облачный ИИ: ...». " +

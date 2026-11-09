@@ -1010,6 +1010,10 @@ public final class MainActivity extends Activity {
         add(llm, aiStatus, 11, 7);
         modelStatus = text(ModelVault.summary(this), 13, MUTED, false);
         add(llm, modelStatus, 9, 9);
+        Button autoModel=button("🐺 Бесплатно скачать Qwen3 1.7B / 4B", true);
+        add(llm,autoModel,0,8);
+        autoModel.setOnClickListener(v->
+                startActivity(new Intent(this,ModelCatalogActivity.class)));
         Button importModel = button("🧠 Импортировать более мощную GGUF-модель", true);
         add(llm, importModel, 0, 8);
         importModel.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)

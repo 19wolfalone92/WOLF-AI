@@ -99,6 +99,21 @@ jobs:
         shell: bash
         run: |
           python3 -B -m unittest discover -s tests -p 'test_wolf_private_browser.py' -v
+      - name: Test 0-fee model catalog and chat commands on JVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-free-tests"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-free-tests" \
+            android/app/src/main/java/ai/wolf/autopilot/OfflineModelCatalog.java \
+            android/app/src/main/java/ai/wolf/autopilot/WolfCommandRouter.java \
+            tests/java/WolfFreeFirstTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-free-tests" \
+            ai.wolf.autopilot.WolfFreeFirstTest
+      - name: Verify free-only Android enforcement and 3-pass local inference
+        shell: bash
+        run: |
+          python3 -B -m unittest discover -s tests -p 'test_wolf_free_first_v15.py' -v
       - name: Verify REAL WOLF workspace backup encryption on JVM
         shell: bash
         run: |

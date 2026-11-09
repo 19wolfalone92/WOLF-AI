@@ -160,11 +160,12 @@ public final class EmbeddedAi {
                 .getSharedPreferences("wolf_offline_ai", Context.MODE_PRIVATE)
                 .getInt("answer_budget", 384);
         budget = budget >= 768 ? 768 : budget >= 512 ? 512 : 256;
-        // Hybrid Qwen3 1.7B may exhaust its answer budget on reasoning.
+        // Any imported Qwen3 may spend the entire budget on hidden thinking.
+        // Use the Qwen3 chat-template /no_think user suffix when supported.
         // /no_think belongs inside the final USER message, not the assistant header.
         String body = prompt.toString();
         if (ModelVault.active(context) != null &&
-                ModelVault.name(context).toLowerCase(java.util.Locale.ROOT).contains("qwen3-1.7b")) {
+                ModelVault.name(context).toLowerCase(java.util.Locale.ROOT).contains("qwen3")) {
             String boundary = "<|im_end|>\n<|im_start|>assistant\n";
             int boundaryPos = body.lastIndexOf(boundary);
             if (boundaryPos >= 0)

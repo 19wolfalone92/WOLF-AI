@@ -44,6 +44,7 @@
             <meta-data android:name="android.accessibilityservice"
                 android:resource="@xml/wolf_accessibility_service" />
         </service>
+        <activity android:name=".ModelCatalogActivity" android:exported="false" />
         <activity android:name=".CloudBrainSettingsActivity" android:exported="false" />
         <activity android:name=".GuideActivity" android:exported="false" />
         <activity android:name=".MetricoolBatchActivity" android:exported="false" />
