@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, SHORT_PROMPT, RETRY_PREVIOUS, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, SHORT_PROMPT, RETRY_PREVIOUS, PHONE_PROFILE, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -27,6 +27,19 @@ public final class WolfCommandRouter {
             return new Decision(Kind.CHAT, "", "Напиши вопрос.");
         String text = raw.trim();
         String q = text.toLowerCase(Locale.ROOT);
+        if (q.contains("параметры моего телефона") ||
+                q.contains("параметры телефона") ||
+                q.contains("проверь характеристики телефона") ||
+                q.contains("сколько у меня оперативной памяти") ||
+                q.contains("какую модель потянет телефон") ||
+                q.contains("какой ии потянет телефон") ||
+                q.equals("подбери ии под телефон") ||
+                q.equals("профиль устройства") ||
+                q.equals("проверка ram") ||
+                q.equals("мой процессор"))
+            return new Decision(Kind.PHONE_PROFILE,text,
+                    "Проверить реальную RAM/SoC/место Android и подобрать модель.");
+
         // A one-character '?' is a request for guidance, not an LLM error.
         if (q.matches("[?!.…\\\\s]+"))
             return new Decision(Kind.SHORT_PROMPT,text,
