@@ -16,6 +16,8 @@ import java.util.UUID;
  */
 public final class TaskStore extends SQLiteOpenHelper {
     public static final String DRAFT = "draft";
+    public static final String DISPATCH_RESERVED = "reserved";
+    public static final String DISPATCH_UNKNOWN = "dispatch_unknown";
     public static final String SUBMITTED = "submitted";
     public static final String RUNNING = "running";
     public static final String SUCCESS = "success";
@@ -92,7 +94,7 @@ public final class TaskStore extends SQLiteOpenHelper {
         if (SensitiveText.containsCredential(body) || GithubBacklog.suspectedSecret(body))
             throw new IllegalArgumentException("Задание содержит возможные токены или пароли. " +
                     "Нельзя сохранять/публиковать секреты в заданиях GitHub.");
-        if (!CommandParser.validProject(project) || !(mode.equals("audit") || mode.equals("test")))
+        if (!CommandParser.validProject(project) || !CommandParser.validMode(mode))
             throw new IllegalArgumentException("Недопустимый проект или режим.");
         ContentValues values = new ContentValues();
         values.put("body", body.trim());
@@ -123,11 +125,32 @@ public final class TaskStore extends SQLiteOpenHelper {
         return result;
     }
 
+    /**
+     * Durable reservation BEFORE any workflow POST. A timeout after HTTP send
+     * must never make the same UID a freely retryable draft.
+     */
+    public boolean reserveDispatch(long id, String uid) {
+        ContentValues values=new ContentValues();
+        values.put("status",DISPATCH_RESERVED);
+        return getWritableDatabase().update("tasks",values,
+                "_id=? AND task_uid=? AND status='draft'",
+                new String[]{String.valueOf(id),uid})==1;
+    }
+
     public void submitted(long id, String uid) {
         ContentValues values = new ContentValues();
         values.put("status", SUBMITTED);
-        getWritableDatabase().update("tasks", values, "_id=? AND task_uid=?",
+        getWritableDatabase().update("tasks", values,
+                "_id=? AND task_uid=? AND status='reserved'",
                 new String[]{String.valueOf(id), uid});
+    }
+
+    public void unknownDispatch(long id, String uid) {
+        ContentValues values=new ContentValues();
+        values.put("status",DISPATCH_UNKNOWN);
+        getWritableDatabase().update("tasks",values,
+                "_id=? AND task_uid=? AND status='reserved'",
+                new String[]{String.valueOf(id),uid});
     }
 
     public int reconcile(List<GithubApi.RunInfo> runs) {
