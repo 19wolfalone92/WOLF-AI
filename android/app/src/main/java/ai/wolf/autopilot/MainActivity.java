@@ -1260,10 +1260,21 @@ public final class MainActivity extends Activity {
     }
 
     private void dispatchSelected(String project, String mode) {
-        showResult("Отправляю запрос на проверку " + project + "…");
-        async(() -> GithubApi.dispatch(project, mode, secrets.load()),
-                answer -> { showResult(answer); updateRuns(); },
-                error -> showResult("Проверка не запущена: " + error));
+        // Ad hoc commands now create durable local records, like task-based
+        // dispatch. A lost HTTP response MUST NOT create a retryable draft.
+        try {
+            long id=tasks.add("Ручная проверка проекта "+project,project,mode);
+            for (TaskStore.Task item:tasks.recent()) {
+                if(item.id==id) {
+                    renderTasks();
+                    dispatchTask(item);
+                    return;
+                }
+            }
+            showResult("Задание сохранено, но не найдено в списке. Проверь журнал.");
+        } catch(Exception error) {
+            showResult("Не удалось подготовить задачу: "+error.getMessage());
+        }
     }
 
     private void dispatchTask(TaskStore.Task task) {
@@ -1271,15 +1282,31 @@ public final class MainActivity extends Activity {
             showResult("Задание уже отправлено. Обнови статусы вместо повторного запуска.");
             return;
         }
-        showResult("Отправляю задачу " + task.uid + "…");
-        async(() -> GithubApi.dispatch(task.project, task.mode, task.uid, secrets.load()),
-                answer -> {
-                    tasks.submitted(task.id, task.uid);
-                    renderTasks();
-                    showResult(answer);
-                    updateRuns();
-                },
-                error -> showResult("Задание осталось локальным: " + error));
+        showResult("Резервирую задачу "+task.uid+" перед отправкой…");
+        async(()->{
+            if(!tasks.reserveDispatch(task.id,task.uid))
+                throw new IllegalStateException("Отправка уже зарезервирована. " +
+                        "Сверь GitHub Actions перед повтором.");
+            try {
+                String answer=GithubApi.dispatch(task.project,task.mode,
+                        task.uid,secrets.load());
+                tasks.submitted(task.id,task.uid);
+                return answer;
+            } catch(Exception error) {
+                // Network timeout may happen AFTER GitHub accepted the run.
+                // Never return task to draft automatically.
+                tasks.unknownDispatch(task.id,task.uid);
+                throw error;
+            }
+        },answer->{
+            renderTasks();
+            showResult(answer);
+            updateRuns();
+        },error->{
+            renderTasks();
+            showResult("Исход отправки неизвестен: "+error+
+                    "\nНе повторяй задачу до проверки GitHub Actions.");
+        });
     }
 
     private void showJobDetails(long runId) {
@@ -1980,6 +2007,8 @@ public final class MainActivity extends Activity {
             int stateColor;
             switch (task.status) {
                 case TaskStore.SUBMITTED: status = "ОТПРАВЛЕНО — ждём GitHub"; stateColor = ORANGE; break;
+                case TaskStore.DISPATCH_RESERVED: status = "ЗАРЕЗЕРВИРОВАНО — не повторять"; stateColor = ORANGE; break;
+                case TaskStore.DISPATCH_UNKNOWN: status = "НЕИЗВЕСТНЫЙ ИСХОД — проверить Actions"; stateColor = ORANGE; break;
                 case TaskStore.RUNNING: status = "ВЫПОЛНЯЕТСЯ"; stateColor = CYAN; break;
                 case TaskStore.SUCCESS: status = "ПРОВЕРКИ УСПЕШНЫ"; stateColor = GREEN; break;
                 case TaskStore.FAILURE: status = "ПРОВЕРКА С ОШИБКОЙ"; stateColor = ORANGE; break;
