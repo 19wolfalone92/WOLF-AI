@@ -186,6 +186,99 @@ public final class ModelVault {
         }
     }
 
+    /**
+     * Install only a trusted, SHA256-pinned download from our private external
+     * download folder. Stream in chunks; never map a 2.5 GB file in the JVM.
+     * The active file and prefs remain unchanged until AFTER verification.
+     */
+    public static String installVerifiedDownload(Context context, File source,
+                                                  OfflineModelCatalog.Entry entry) throws Exception {
+        if (!OfflineModelCatalog.trusted(entry))
+            throw new IllegalArgumentException("Модель отсутствует в доверенном каталоге.");
+        Context app=context.getApplicationContext();
+        File external=app.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS);
+        if(external==null)
+            throw new IllegalStateException("Недоступна папка загрузок приложения.");
+        File allowed=new File(external,entry.downloadName);
+        if(source==null || !source.isFile() ||
+                !source.getCanonicalPath().equals(allowed.getCanonicalPath()))
+            throw new IllegalArgumentException("Файл не из защищённой загрузки WOLF.");
+        if(source.length()<entry.minBytes || source.length()>entry.maxBytes)
+            throw new IllegalArgumentException("Неверный размер загруженной модели.");
+        synchronized(LOCK) {
+            File dir=folder(app);
+            if(!dir.isDirectory() && !dir.mkdirs())
+                throw new IllegalStateException("Не удалось создать каталог моделей.");
+            long free=new StatFs(dir.getAbsolutePath()).getAvailableBytes();
+            if(free<source.length()+300_000_000L)
+                throw new IllegalStateException(
+                        "Не хватает свободного места для проверки и установки GGUF. " +
+                        "Нужно размер модели + 300 МБ.");
+            File partial=new File(dir,"downloaded-verified.gguf.partial");
+            File backup=new File(dir,"previous.gguf.backup");
+            if(partial.exists()&&!partial.delete())
+                throw new IllegalStateException("Не удалось очистить неполный импорт.");
+            if(backup.exists()&&!backup.delete())
+                throw new IllegalStateException("Не удалось очистить старую резервную копию.");
+            MessageDigest digest=MessageDigest.getInstance("SHA-256");
+            long count=0;
+            try(InputStream in=new FileInputStream(source);
+                FileOutputStream out=new FileOutputStream(partial)) {
+                byte[] bytes=new byte[1024*1024];
+                int n;
+                while((n=in.read(bytes))!=-1) {
+                    count+=n;
+                    if(count>entry.maxBytes)
+                        throw new IllegalStateException("Входной файл превышает лимит.");
+                    out.write(bytes,0,n);
+                    digest.update(bytes,0,n);
+                }
+                out.getFD().sync();
+            } catch(Exception error) {
+                partial.delete();
+                throw error;
+            }
+            String sha=digestHex(digest.digest());
+            if(count<entry.minBytes || count>entry.maxBytes ||
+                    !sha.equals(entry.sha256) || !magicOk(partial)) {
+                partial.delete();
+                throw new IllegalStateException(
+                        "SHA-256 / формат модели не совпадает с проверенным каталогом. " +
+                        "Предыдущая модель не изменена.");
+            }
+            EmbeddedAi.unload();
+            File active=target(app);
+            boolean hadOld=active.isFile();
+            if(hadOld && !active.renameTo(backup)) {
+                partial.delete();
+                throw new IllegalStateException("Не удалось сохранить прежнюю модель.");
+            }
+            if(!partial.renameTo(active)) {
+                if(hadOld)backup.renameTo(active);
+                partial.delete();
+                throw new IllegalStateException(
+                        "Не удалось применить новую модель. Старая восстановлена.");
+            }
+            boolean persisted=prefs(app).edit()
+                    .putBoolean("enabled",true)
+                    .putString("name",entry.title+".gguf")
+                    .putString("sha256",sha)
+                    .putLong("size",count)
+                    .commit();
+            if(!persisted) {
+                active.delete();
+                if(hadOld)backup.renameTo(active);
+                throw new IllegalStateException(
+                        "Не удалось сохранить выбор модели. Восстановлена предыдущая.");
+            }
+            if(hadOld)backup.delete();
+            source.delete(); // Download manager target is app-private and verified.
+            return "✅ "+entry.title+" установлена локально. SHA256: "+sha+
+                    "\\nГотово к проверке запуска. " +
+                    "Модель работает без облачного API, но скорость и RAM зависят от телефона.";
+        }
+    }
+
     public static String reset(Context context) {
         synchronized (LOCK) {
             EmbeddedAi.unload();
