@@ -16,7 +16,8 @@ class SamsungMobileQwen35Contracts(unittest.TestCase):
             "Qwen3.5-0.8B-Q4_0.gguf",
             "Qwen3.5-2B-Q4_K_M.gguf",
             "Qwen3.5-4B-Q4_K_M.gguf",
-        ): self.assertIn(item,catalog)
+        ):
+            self.assertIn(item,catalog)
         self.assertIn('entry.sha256.matches("[0-9a-f]{64}")',catalog)
         self.assertIn("https://huggingface.co/",catalog)
         self.assertNotIn(".llamafile",catalog)
@@ -30,7 +31,8 @@ class SamsungMobileQwen35Contracts(unittest.TestCase):
             "stat.getAvailableBytes()", "Build.SOC_MODEL",
             "Build.VERSION.RELEASE", "Build.SUPPORTED_64_BIT_ABIS",
             "getCurrentThermalStatus()", "Runtime.getRuntime().availableProcessors()",
-        ): self.assertIn(marker,screen)
+        ):
+            self.assertIn(marker,screen)
         self.assertIn("QWEN35_08",profile)
         self.assertIn("QWEN35_2",profile)
         self.assertIn("QWEN35_4",profile)
