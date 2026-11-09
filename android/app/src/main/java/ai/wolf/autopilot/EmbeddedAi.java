@@ -30,7 +30,7 @@ public final class EmbeddedAi {
     private EmbeddedAi() {}
 
     private static native String nativeLoad(String path);
-    private static native String nativeGenerate(String prompt, int maxTokens);
+    private static native String nativeGenerate(String prompt, int maxTokens, int contextTokens);
     private static native void nativeUnload();
 
     private static String hex(byte[] data) {
@@ -204,7 +204,9 @@ public final class EmbeddedAi {
         }
         synchronized (LOCK) {
             check(context);
-            String output = nativeGenerate(body, budget);
+            // RAM-aware KV cache: smaller context on RAM-constrained phones.
+            int contextTokens=PhoneAiProfileActivity.current(context).contextTokens;
+            String output = nativeGenerate(body, budget, contextTokens);
             if (output.startsWith("Ошибка локального ИИ:"))
                 throw new IllegalStateException(output);
             return output;
