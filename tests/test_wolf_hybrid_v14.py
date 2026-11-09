@@ -71,6 +71,25 @@ class HybridReleaseContracts(unittest.TestCase):
         self.assertNotIn('upload-artifact',script)
         self.assertNotIn('requests.post(',script)
 
+    def test_real_read_only_agent_and_accessibility_preview(self):
+        agent=src("PublicResearchAgent")
+        home=src("HomeActivity")
+        accessibility=src("WolfAccessibilityService")
+        self.assertIn("WebSearchService.search(queries[i])",agent)
+        self.assertIn("WebPageReader.read(result.url)",agent)
+        self.assertIn("EmbeddedAi.ask(context,prompt",agent)
+        self.assertIn("if(attempted>=4)break",agent)
+        self.assertIn("seen.add(result.url)",agent)
+        self.assertIn("append(verified)",agent)
+        self.assertIn("case AUTONOMOUS_RESEARCH:",home)
+        self.assertIn("confirmAutonomousResearch(command)",home)
+        self.assertIn("PublicResearchAgent.run(",home)
+        self.assertIn('setTitle("🤖 Запустить публичного исследовательского агента?")',home)
+        self.assertIn('listNavigationLabels(root)',accessibility)
+        self.assertIn('if ("inspect".equals(request.type))',accessibility)
+        self.assertIn('!node.isPassword()',accessibility)
+        self.assertIn('WolfAccessibilityService.status()',home)
+
     def test_android_compilation_gates_updated(self):
         version=Path("android/app/build.gradle").read_text("utf-8")
         self.assertIn("versionName '14.0.0'",version)
