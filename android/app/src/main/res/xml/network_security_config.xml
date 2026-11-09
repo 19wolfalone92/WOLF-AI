@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- No HTTP exception: the obsolete Termux localhost server is gone.
+     Use HTTPS for public browsing and API requests, including loopback. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain>127.0.0.1</domain>
-        <domain>localhost</domain>
-    </domain-config>
 </network-security-config>
