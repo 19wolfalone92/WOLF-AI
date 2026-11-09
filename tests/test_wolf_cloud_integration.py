@@ -61,7 +61,7 @@ class CloudBrowserIntegrationContracts(unittest.TestCase):
 
     def test_release_gates_have_actual_cpu_browser_smoke(self):
         gradle = Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '15.0.0'", gradle)
+        self.assertIn("versionName '16.0.0'", gradle)
         workflow = Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn("CloudBrowserCommand.java", workflow)
 

@@ -15,6 +15,7 @@ import android.view.inputmethod.EditorInfo;
 import android.webkit.CookieManager;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -54,6 +55,25 @@ public final class BrowserActivity extends Activity {
     private WebView page;
     private boolean javascriptEnabled;
     private final ExecutorService reader = Executors.newSingleThreadExecutor();
+    private static final int STUDIO_VIDEO_PICK=9451;
+    private ValueCallback<Uri[]> studioVideoCallback;
+
+    private boolean isOfficialTikTokStudio() {
+        if(page==null || page.getUrl()==null)return false;
+        Uri current=Uri.parse(page.getUrl());
+        String host=current.getHost();
+        return "https".equalsIgnoreCase(current.getScheme()) &&
+                ("www.tiktok.com".equalsIgnoreCase(host) ||
+                 "tiktok.com".equalsIgnoreCase(host) ||
+                 "studio.tiktok.com".equalsIgnoreCase(host)) &&
+                studioVideoCallback==null;
+    }
+
+    private void cancelStudioPicker() {
+        ValueCallback<Uri[]> callback=studioVideoCallback;
+        studioVideoCallback=null;
+        if(callback!=null)callback.onReceiveValue(null);
+    }
 
     public static String resolve(String typed) {
         String input = typed == null ? "" : typed.trim();
@@ -169,6 +189,36 @@ public final class BrowserActivity extends Activity {
         settings.setSafeBrowsingEnabled(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(page, false);
         page.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onShowFileChooser(WebView view,
+                                                         ValueCallback<Uri[]> callback,
+                                                         FileChooserParams params) {
+                if(!isOfficialTikTokStudio()){
+                    status.setText("Загрузка файла разрешена только на официальном TikTok.");
+                    return false;
+                }
+                new AlertDialog.Builder(BrowserActivity.this)
+                    .setTitle("Выбрать MP4 для TikTok Studio?")
+                    .setMessage("Ты сам выберешь видео из файлов Android. " +
+                            "Официальный сайт TikTok сможет прочитать только " +
+                            "этот файл. WOLF не вводит пароль, не отправляет " +
+                            "ролик в Metricool и не нажимает «Опубликовать».")
+                    .setNegativeButton("Отмена",(d,w)->callback.onReceiveValue(null))
+                    .setPositiveButton("Выбрать MP4",(d,w)->{
+                        studioVideoCallback=callback;
+                        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        pick.addCategory(Intent.CATEGORY_OPENABLE);
+                        pick.setType("video/mp4");
+                        pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        try {
+                            startActivityForResult(pick,STUDIO_VIDEO_PICK);
+                        }catch(Exception ex){
+                            cancelStudioPicker();
+                            status.setText("Не удалось открыть файловый менеджер.");
+                        }
+                    }).show();
+                return true;
+            }
+
             @Override public void onProgressChanged(WebView view, int progress) {
                 status.setText("🌐 Загрузка " + progress + "% · HTTPS");
             }
@@ -275,6 +325,51 @@ public final class BrowserActivity extends Activity {
         });
         String target = getIntent().getStringExtra(EXTRA_TARGET);
         navigate(target == null ? "" : target);
+    }
+
+    @Override protected void onActivityResult(int request,int result,Intent data) {
+        super.onActivityResult(request,result,data);
+        if(request!=STUDIO_VIDEO_PICK)return;
+        ValueCallback<Uri[]> callback=studioVideoCallback;
+        studioVideoCallback=null;
+        if(callback==null)return;
+        if(result!=RESULT_OK || data==null || data.getData()==null) {
+            callback.onReceiveValue(null);
+            status.setText("Выбор файла TikTok Studio отменён.");
+            return;
+        }
+        Uri chosen=data.getData();
+        try {
+            if(page==null || page.getUrl()==null)
+                throw new IllegalStateException("Вкладка закрыта.");
+            Uri site=Uri.parse(page.getUrl());
+            String host=site.getHost();
+            if(!"https".equalsIgnoreCase(site.getScheme()) ||
+                    !("www.tiktok.com".equalsIgnoreCase(host) ||
+                      "tiktok.com".equalsIgnoreCase(host) ||
+                      "studio.tiktok.com".equalsIgnoreCase(host)) ||
+                    !"content".equals(chosen.getScheme()))
+                throw new IllegalStateException("Домен или источник файла изменился.");
+            String mime=getContentResolver().getType(chosen);
+            if(!"video/mp4".equals(mime) &&
+                    !"application/mp4".equals(mime))
+                throw new IllegalStateException("Только видео MP4.");
+            try(android.database.Cursor cursor=getContentResolver().query(chosen,
+                    new String[]{android.provider.OpenableColumns.SIZE},null,null,null)) {
+                if(cursor!=null && cursor.moveToFirst()) {
+                    int col=cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
+                    if(col>=0 && !cursor.isNull(col) &&
+                            cursor.getLong(col)>1_500_000_000L)
+                        throw new IllegalStateException("Видео больше 1.5 ГБ.");
+                }
+            }
+            callback.onReceiveValue(new Uri[]{chosen});
+            status.setText("Видео передано официальному сайту TikTok. " +
+                    "Загрузка и публикация ещё должны быть подтверждены в Studio.");
+        }catch(Exception error) {
+            callback.onReceiveValue(null);
+            status.setText("Не передаю файл: "+error.getMessage());
+        }
     }
 
     private String responseString(String json) {
@@ -555,6 +650,7 @@ public final class BrowserActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        cancelStudioPicker();
         reader.shutdownNow();
         flowGeneration++;
         if (page != null) {

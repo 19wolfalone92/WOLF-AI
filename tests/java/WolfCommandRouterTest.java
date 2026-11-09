@@ -49,7 +49,7 @@ public final class WolfCommandRouterTest {
         assertKind("Исправь ошибки в приложении Shaira",
                 WolfCommandRouter.Kind.PROJECT_TASK);
         assertKind("Собери APK", WolfCommandRouter.Kind.PROJECT_TASK);
-        assertKind("Выложи видео в TikTok", WolfCommandRouter.Kind.TOOLS);
+        assertKind("Выложи видео в TikTok", WolfCommandRouter.Kind.TIKTOK_STUDIO);
         assertKind("Создай видео в студии", WolfCommandRouter.Kind.TOOLS);
         assertKind("Открой инструменты", WolfCommandRouter.Kind.TOOLS);
         assertKind("Прочитай https://example.com", WolfCommandRouter.Kind.READ_URL);

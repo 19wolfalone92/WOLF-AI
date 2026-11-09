@@ -108,10 +108,21 @@ public final class EmbeddedAi {
         return ask(context, question, history, java.util.Collections.emptyList());
     }
 
-    /** Only user-approved local notes are retrieved; no model weights are changed. */
+    /** Old callers keep their existing answer budget. */
     public static String ask(Context context, String question,
                              List<ChatStore.Message> history,
                              List<LearningStore.Fact> facts) throws Exception {
+        int budget = context.getApplicationContext()
+                .getSharedPreferences("wolf_offline_ai", Context.MODE_PRIVATE)
+                .getInt("answer_budget", 384);
+        return ask(context, question, history, facts, budget);
+    }
+
+    /** Per-request generation budget for user's depth profile, no global race. */
+    public static String ask(Context context, String question,
+                             List<ChatStore.Message> history,
+                             List<LearningStore.Fact> facts,
+                             int outputTokens) throws Exception {
         if (question == null || question.trim().length() < 3 || question.length() > 2500)
             throw new IllegalArgumentException("Длина вопроса должна быть 3–2500 символов.");
         check(context);
@@ -156,10 +167,7 @@ public final class EmbeddedAi {
         prompt.append("<|im_start|>user\n")
               .append(question.trim().replace("<|im_start|>", "").replace("<|im_end|>", ""))
               .append("<|im_end|>\n<|im_start|>assistant\n");
-        int budget = context.getApplicationContext()
-                .getSharedPreferences("wolf_offline_ai", Context.MODE_PRIVATE)
-                .getInt("answer_budget", 384);
-        budget = budget >= 768 ? 768 : budget >= 512 ? 512 : 256;
+        int budget = ThinkingDepth.clampTokens(outputTokens);
         // Any imported Qwen3 may spend the entire budget on hidden thinking.
         // Use the Qwen3 chat-template /no_think user suffix when supported.
         // /no_think belongs inside the final USER message, not the assistant header.

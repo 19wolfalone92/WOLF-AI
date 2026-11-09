@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -27,6 +27,24 @@ public final class WolfCommandRouter {
             return new Decision(Kind.CHAT, "", "Напиши вопрос.");
         String text = raw.trim();
         String q = text.toLowerCase(Locale.ROOT);
+        if (q.equals("настрой глубину") ||
+                q.equals("настройка глубины") ||
+                q.equals("режимы глубины") ||
+                q.equals("настрой мышление") ||
+                q.matches("^(?:глубина|режим глубины)\\s+[1-4]$"))
+            return new Decision(Kind.DEPTH_SETTINGS,text,
+                    "Изменить число проходов и токенов на телефоне.");
+        if (q.equals("тик ток студио") ||
+                q.equals("тикток студио") ||
+                q.equals("tiktok studio") ||
+                q.contains("tiktok studio") ||
+                q.contains("тикток студио") ||
+                q.contains("тик ток студио") ||
+                q.contains("без метрикул") ||
+                q.contains("без metricool") ||
+                q.matches("(?s).*(?:выложи|опубликуй|загрузи|отправь).*(?:в тикток|в тик ток|на тикток|на тик ток|в tiktok|на tiktok).*"))
+            return new Decision(Kind.TIKTOK_STUDIO,text,
+                    "Открыть прямую публикацию TikTok без Metricool и с подтверждением.");
         if (q.equals("включи бесплатный режим") ||
                 q.equals("только бесплатный режим") ||
                 q.equals("используй только бесплатные модели") ||
@@ -50,7 +68,7 @@ public final class WolfCommandRouter {
                 q.startsWith("проверь своё решение") ||
                 q.startsWith("проверь свое решение"))
             return new Decision(Kind.DEEP_LOCAL,text,
-                    "Три реальных локальных этапа: план, ответ, критическая проверка.");
+                    "От 1 до 4 локальных проходов по настройкам.");
         if (contains(q, "что ты умеешь", "твои возможности", "инструкция",
                 "как пользоваться", "помощь", "/help", "расскажи о себе"))
             return new Decision(Kind.HELP, "", "Показать возможности и ограничения.");
