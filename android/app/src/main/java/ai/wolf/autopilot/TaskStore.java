@@ -89,6 +89,9 @@ public final class TaskStore extends SQLiteOpenHelper {
     public long add(String body, String project, String mode) {
         if (body == null || body.trim().length() < 3 || body.length() > 600)
             throw new IllegalArgumentException("Задание должно содержать 3–600 символов.");
+        if (SensitiveText.containsCredential(body) || GithubBacklog.suspectedSecret(body))
+            throw new IllegalArgumentException("Задание содержит возможные токены или пароли. " +
+                    "Нельзя сохранять/публиковать секреты в заданиях GitHub.");
         if (!CommandParser.validProject(project) || !(mode.equals("audit") || mode.equals("test")))
             throw new IllegalArgumentException("Недопустимый проект или режим.");
         ContentValues values = new ContentValues();
