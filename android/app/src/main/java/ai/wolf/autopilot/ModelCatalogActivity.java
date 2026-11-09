@@ -48,7 +48,7 @@ public final class ModelCatalogActivity extends Activity {
     }
     private long job() { return prefs().getLong("job_id",-1L); }
     private OfflineModelCatalog.Entry selected() {
-        return OfflineModelCatalog.get(prefs().getString("entry","QWEN3_17"));
+        return OfflineModelCatalog.get(prefs().getString("entry","QWEN35_2"));
     }
     private void clearJob() {
         prefs().edit().remove("job_id").remove("entry").commit();
@@ -67,17 +67,36 @@ public final class ModelCatalogActivity extends Activity {
                 "один раз скачивается по Wi-Fi и затем работает офлайн. " +
                 "Скачиваются официальные GGUF, проверяется SHA-256. " +
                 "Встроенная Qwen 0.5B всегда остаётся в APK.",15));
-        root.addView(txt("⚠️ Размер моделей ~1.3 ГБ и ~2.5 ГБ. " +
-                "На телефонах с небольшим объёмом RAM они могут " +
-                "работать очень медленно или не запуститься. " +
-                "При выборе 4B нагрузка и расход батареи выше. " +
-                "Рекомендуем сначала 1.7B.",13));
+        root.addView(txt("📱 Сначала измеряем реальную RAM и доступный накопитель. " +
+                "Qwen3.5 0.8B: ~563 МБ; Qwen3.5 2B: ~1.28 ГБ; " +
+                "Qwen3.5 4B: ~2.74 ГБ. Большая модель требует больше RAM " +
+                "и может работать медленно. Первая загрузка — по Wi-Fi.",13));
+        DeviceAiProfile.Plan advice=PhoneAiProfileActivity.current(this);
+        root.addView(txt("🐺 "+advice.summary(),15));
+        Button recommended=button("✅ Рекомендуемая: "+advice.recommended.title);
+        root.addView(recommended);
+        recommended.setOnClickListener(v->confirmDownload(advice.recommended));
+        Button device=button("📱 Проверить реальные параметры телефона");
+        root.addView(device);
+        device.setOnClickListener(v->startActivity(
+                new Intent(this,PhoneAiProfileActivity.class)));
         root.addView(txt("Текущая модель: "+ModelVault.summary(this),13));
         status=txt("Проверяю загрузки…",14);root.addView(status);
-        Button small=button("⚡ Скачать бесплатно Qwen3 1.7B · ~1.3 ГБ");
+        root.addView(txt("Новые бесплатные Qwen3.5 · разговор и рассуждение",16));
+        Button compact=button("⚡ Qwen3.5 0.8B · ~563 МБ");
+        root.addView(compact);
+        compact.setOnClickListener(v->confirmDownload(OfflineModelCatalog.Entry.QWEN35_08));
+        Button balanced=button("💬 Qwen3.5 2B · ~1.28 ГБ");
+        root.addView(balanced);
+        balanced.setOnClickListener(v->confirmDownload(OfflineModelCatalog.Entry.QWEN35_2));
+        Button powerful=button("🧠 Qwen3.5 4B · ~2.74 ГБ");
+        root.addView(powerful);
+        powerful.setOnClickListener(v->confirmDownload(OfflineModelCatalog.Entry.QWEN35_4));
+        root.addView(txt("Другие офлайн-модели Qwen3",15));
+        Button small=button("Qwen3 1.7B · ~1.3 ГБ");
         root.addView(small);
         small.setOnClickListener(v->confirmDownload(OfflineModelCatalog.Entry.QWEN3_17));
-        Button bigger=button("🧠 Скачать бесплатно Qwen3 4B · ~2.5 ГБ");
+        Button bigger=button("Qwen3 4B · ~2.5 ГБ");
         root.addView(bigger);
         bigger.setOnClickListener(v->confirmDownload(OfflineModelCatalog.Entry.QWEN3_4));
         Button check=button("🔄 Проверить загрузку");
@@ -106,10 +125,12 @@ public final class ModelCatalogActivity extends Activity {
         }
         String memory=ram==0?"RAM не определена":
                 String.format(Locale.ROOT,"Общая RAM: %.1f ГБ.",ram/1e9);
+        DeviceAiProfile.Plan advice=PhoneAiProfileActivity.current(this);
         new AlertDialog.Builder(this)
                 .setTitle("Скачать "+entry.title+" по Wi-Fi?")
                 .setMessage(OfflineModelCatalog.describe(entry)+"\n"+
-                        memory+"\n\nПонадобится дополнительно около "+
+                        memory+"\n\n"+DeviceAiProfile.warning(entry,advice)+
+                        "\n\nПонадобится дополнительно около "+
                         String.format(Locale.ROOT,"%.1f ГБ",entry.maxBytes*2.0/1e9)+
                         " для скачивания и проверенной установки. " +
                         "Сеть мобильного оператора не используется. " +

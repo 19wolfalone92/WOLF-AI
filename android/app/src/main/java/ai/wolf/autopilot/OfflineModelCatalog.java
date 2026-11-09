@@ -8,6 +8,24 @@ import java.util.Locale;
  */
 public final class OfflineModelCatalog {
     public enum Entry {
+        QWEN35_08(
+                "Qwen3.5 0.8B Q4_0",
+                "https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf",
+                "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf",
+                520_000_000L,605_000_000L,
+                "wolf-qwen3.5-0.8b-q4.gguf"),
+        QWEN35_2(
+                "Qwen3.5 2B Q4_K_M",
+                "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
+                "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+                1_220_000_000L,1_350_000_000L,
+                "wolf-qwen3.5-2b-q4km.gguf"),
+        QWEN35_4(
+                "Qwen3.5 4B Q4_K_M",
+                "https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+                "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4",
+                2_650_000_000L,2_850_000_000L,
+                "wolf-qwen3.5-4b-q4km.gguf"),
         QWEN3_17(
                 "Qwen3 1.7B Q4_K_M",
                 "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
@@ -47,10 +65,10 @@ public final class OfflineModelCatalog {
                 entry.url.startsWith("https://huggingface.co/") &&
                 entry.url.endsWith(".gguf") &&
                 entry.sha256.matches("[0-9a-f]{64}") &&
-                entry.minBytes >= 1_000_000_000L &&
+                entry.minBytes >= 400_000_000L &&
                 entry.maxBytes <= 3_600_000_000L &&
                 entry.minBytes < entry.maxBytes &&
-                entry.downloadName.matches("wolf-qwen3-[a-z0-9.-]+\\.gguf");
+                entry.downloadName.matches("wolf-qwen3(?:\\.5)?-[a-z0-9.-]+\\.gguf");
     }
 
     public static String describe(Entry entry) {

@@ -32,11 +32,13 @@ class LocalModelContracts(unittest.TestCase):
 
     def test_native_has_larger_but_bounded_context_and_sampling(self):
         src = NATIVE.read_text(encoding="utf-8")
-        self.assertIn("cparams.n_ctx = 4096;", src)
+        self.assertIn("cparams.n_ctx = ctx_tokens;", src)
+        self.assertIn("requested_ctx >= 4096", src)
+        self.assertIn("requested_ctx >= 3072", src)
         self.assertIn("min((int) max_out, 768)", src)
         self.assertIn("llama_sampler_init_top_p(0.90f, 1)", src)
         self.assertIn("llama_sampler_init_temp(0.65f)", src)
-        self.assertIn("needed > 2500", src)
+        self.assertIn("needed > std::min(2500, ctx_tokens - 128)", src)
         self.assertNotIn("llama_sampler_init_greedy()", src)
 
     def test_voice_explicit_opt_in(self):

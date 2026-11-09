@@ -53,8 +53,11 @@ public final class ModelVault {
     public static String summary(Context context) {
         SharedPreferences p = prefs(context);
         File f = target(context);
-        if (!p.getBoolean("enabled", false) || !f.isFile())
-            return "⚡ Быстрая модель 0.5B в APK. Можно импортировать GGUF до 3.6 ГБ.";
+        if (!p.getBoolean("enabled", false) || !f.isFile()) {
+            String reason=p.getString("suspended_reason","");
+            return "⚡ Быстрая модель 0.5B в APK. Можно импортировать GGUF до 3.6 ГБ."+
+                    (reason.isEmpty()?"":"\n⚠️ Предыдущая модель не запустилась: "+reason);
+        }
         return "🧠 " + name(context) + " • " +
                 String.format(Locale.ROOT, "%.2f ГБ", f.length() / 1e9) +
                 "\nSHA-256: " + p.getString("sha256", "not available") +
@@ -277,6 +280,21 @@ public final class ModelVault {
                     "\nГотово к проверке запуска. " +
                     "Модель работает без облачного API, но скорость и RAM зависят от телефона.";
         }
+    }
+
+    /**
+     * A recently downloaded GGUF may be too new for this pinned native engine.
+     * Fail safe: stop using it, retain the file for diagnosis/reimport, and
+     * allow the bundled 0.5B to work instead of breaking ordinary chat.
+     */
+    public static void suspendUnsupported(Context context, String detail) {
+        String reason=(detail==null?"Неизвестная ошибка загрузки":detail);
+        if(reason.length()>180)reason=reason.substring(0,180);
+        if(!prefs(context).edit()
+                .putBoolean("enabled",false)
+                .putString("suspended_reason",reason)
+                .commit())
+            throw new IllegalStateException("Не удалось переключиться на резервную модель.");
     }
 
     public static String reset(Context context) {

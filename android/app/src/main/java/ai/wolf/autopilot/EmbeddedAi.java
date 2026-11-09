@@ -30,7 +30,7 @@ public final class EmbeddedAi {
     private EmbeddedAi() {}
 
     private static native String nativeLoad(String path);
-    private static native String nativeGenerate(String prompt, int maxTokens);
+    private static native String nativeGenerate(String prompt, int maxTokens, int contextTokens);
     private static native void nativeUnload();
 
     private static String hex(byte[] data) {
@@ -86,7 +86,13 @@ public final class EmbeddedAi {
     public static String check(Context context) throws Exception {
         synchronized (LOCK) {
             Context app = context.getApplicationContext();
-            File imported = ModelVault.active(app);
+            File imported=null;
+            try {
+                imported=ModelVault.active(app);
+            } catch (IllegalStateException invalid) {
+                // Bad imports must never permanently break plain conversation.
+                ModelVault.suspendUnsupported(app, invalid.getMessage());
+            }
             File source = imported == null ? model(app) : imported;
             String path = source.getAbsolutePath();
             if (!path.equals(loadedPath)) {
@@ -94,12 +100,23 @@ public final class EmbeddedAi {
                 if (loadedPath != null) nativeUnload();
                 loadedPath = null;
                 String result = nativeLoad(path);
+                if (result.startsWith("Ошибка") && imported != null) {
+                    // Newly supported formats (e.g. Qwen3.5) may outrun the
+                    // pinned llama.cpp build. Disable, never delete the model.
+                    ModelVault.suspendUnsupported(app, result);
+                    imported=null;
+                    File fallback=model(app);
+                    path=fallback.getAbsolutePath();
+                    result=nativeLoad(path);
+                }
                 if (result.startsWith("Ошибка")) throw new IllegalStateException(result);
                 loadedPath = path;
             }
             return (imported != null ? ModelVault.name(app) :
                     "Qwen2.5-Coder 0.5B (встроенная)") +
-                    ": загружена на устройстве без облачного API.";
+                    ": загружена на устройстве без облачного API."+
+                    (ModelVault.summary(app).contains("Предыдущая модель не запустилась")?
+                    "\n⚠️ Импортированный GGUF был отключён, работает резервная 0.5B." : "");
         }
     }
 
@@ -126,17 +143,25 @@ public final class EmbeddedAi {
         if (question == null || question.trim().length() < 3 || question.length() > 2500)
             throw new IllegalArgumentException("Длина вопроса должна быть 3–2500 символов.");
         check(context);
+        int contextTokens=PhoneAiProfileActivity.current(context).contextTokens;
+        int historyLimit=contextTokens<=2048?6:contextTokens<=3072?9:12;
+        int messageCharacters=contextTokens<=2048?240:contextTokens<=3072?330:400;
         StringBuilder prompt = new StringBuilder();
         prompt.append("<|im_start|>system\n")
-              .append("Ты WOLF AI — интеллектуальный персональный ассистент с локальной ")
-              .append("моделью. Общайся на языке пользователя, обычно по-русски. ")
-              .append("Объясняй точно, ясно и по делу; решай задачи по шагам. ")
-              .append("Не выдумывай факты, источники, время, результаты запусков и ")
-              .append("возможности. При нехватке знаний скажи об этом. ")
-              .append("Отличай идеи от выполненных действий. Сам текст ответа не ")
-              .append("запускает Github Actions и не публикует видео: действия ")
-              .append("выполняются только отдельными инструментами приложения после ")
-              .append("подтверждения пользователя. Не запрашивай пароли и токены.")
+              .append("Ты WOLF AI — собеседник и помощник на Android с локальной ")
+              .append("нейросетью. Разговаривай естественно и по-человечески на ")
+              .append("языке пользователя, обычно по-русски. Можно обсуждать ")
+              .append("любые обычные темы, идеи, эмоции, фильмы, творчество, ")
+              .append("отношения и технические задачи. Не требуй команд и ")
+              .append("не превращай каждое сообщение в инструкцию. ")
+              .append("Поддерживай текущую тему по истории беседы, ")
+              .append("задавай короткий уточняющий вопрос только когда необходимо. ")
+              .append("На короткие реплики отвечай естественно, на сложные ")
+              .append("задачи — достаточно подробно. Если нет фактов, прямо скажи. ")
+              .append("Не выдумывай факты, источники, результаты запусков и действия. ")
+              .append("Текст ответа не публикует видео и не запускает GitHub; ")
+              .append("для действий есть отдельные инструменты с подтверждением. ")
+              .append("Не запрашивай пароли, ключи API и токены.")
               .append("<|im_end|>\n");
         if (facts != null && !facts.isEmpty()) {
             prompt.append("<|im_start|>system\n")
@@ -153,12 +178,13 @@ public final class EmbeddedAi {
             prompt.append("<|im_end|>\n");
         }
         if (history != null) {
-            int start = Math.max(0, history.size() - 8);
+            int start = Math.max(0, history.size() - historyLimit);
             for (int i = start; i < history.size(); i++) {
                 ChatStore.Message item = history.get(i);
                 if (!("user".equals(item.role) || "assistant".equals(item.role))) continue;
                 String text = item.text;
-                if (text.length() > 350) text = text.substring(0, 350);
+                if (text.length() > messageCharacters)
+                    text = text.substring(0, messageCharacters);
                 text = text.replace("<|im_start|>", "").replace("<|im_end|>", "");
                 prompt.append("<|im_start|>").append(item.role).append("\n")
                       .append(text).append("<|im_end|>\n");
@@ -182,7 +208,8 @@ public final class EmbeddedAi {
         }
         synchronized (LOCK) {
             check(context);
-            String output = nativeGenerate(body, budget);
+            // RAM-aware KV cache: smaller context on RAM-constrained phones.
+            String output = nativeGenerate(body, budget, contextTokens);
             if (output.startsWith("Ошибка локального ИИ:"))
                 throw new IllegalStateException(output);
             return output;

@@ -61,23 +61,29 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeLoad(JNIEnv * env, jclass, jstring path)
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring request, jint max_out) {
+Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring request, jint max_out, jint requested_ctx) {
     std::lock_guard<std::mutex> lock(guard);
     if (!model) return fail(env, "Сначала открой модель.");
     std::string prompt = from_jstring(env, request);
     if (prompt.empty() || prompt.size() > 13500) return fail(env, "Слишком длинный контекст. Уменьшите историю или вопрос.");
     int max_tokens = std::max(32, std::min((int) max_out, 768));
+    // Only allow a small known-safe set of contexts. Never request an
+    // arbitrary huge KV cache from user-controlled Java parameters.
+    int ctx_tokens = requested_ctx >= 4096 ? 4096 :
+            requested_ctx >= 3072 ? 3072 : 2048;
     const llama_vocab * vocab = llama_model_get_vocab(model);
     int32_t needed = -llama_tokenize(vocab, prompt.data(), (int32_t)prompt.size(),
                                       nullptr, 0, true, true);
-    if (needed <= 0 || needed > 2500) return fail(env, "Запрос не помещается в контекст модели (до 2500 токенов).");
+    if (needed <= 0 || needed > std::min(2500, ctx_tokens - 128))
+        return fail(env, "История переписки не помещается в оперативную память. " 
+                         "Сократи запрос или уменьши контекст.");
     std::vector<llama_token> tokens(needed);
     if (llama_tokenize(vocab, prompt.data(), (int32_t)prompt.size(),
                        tokens.data(), needed, true, true) < 0)
         return fail(env, "Ошибка токенизации.");
 
     llama_context_params cparams = llama_context_default_params();
-    cparams.n_ctx = 4096;
+    cparams.n_ctx = ctx_tokens;
     cparams.n_batch = 512;
     cparams.n_threads = 4;
     cparams.n_threads_batch = 4;
@@ -106,7 +112,7 @@ Java_ai_wolf_autopilot_EmbeddedAi_nativeGenerate(JNIEnv * env, jclass, jstring r
         pos += chunk;
     }
 
-    for (int i = 0; ok && i < max_tokens && pos < 4095; i++) {
+    for (int i = 0; ok && i < max_tokens && pos < ctx_tokens - 1; i++) {
         llama_token next = llama_sampler_sample(sampler, ctx, -1);
         if (llama_vocab_is_eog(vocab, next)) break;
         int need = llama_token_to_piece(vocab, next, nullptr, 0, 0, true);
