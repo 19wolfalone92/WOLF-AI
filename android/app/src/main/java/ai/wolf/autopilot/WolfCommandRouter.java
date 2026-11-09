@@ -42,7 +42,7 @@ public final class WolfCommandRouter {
                 q.contains("тик ток студио") ||
                 q.contains("без метрикул") ||
                 q.contains("без metricool") ||
-                q.matches("(?s).*(?:выложи|опубликуй|загрузи|отправь).*(?:в тикток|в тик ток|на тикток|на тик ток).*"))
+                q.matches("(?s).*(?:выложи|опубликуй|загрузи|отправь).*(?:в тикток|в тик ток|на тикток|на тик ток|в tiktok|на tiktok).*"))
             return new Decision(Kind.TIKTOK_STUDIO,text,
                     "Открыть прямую публикацию TikTok без Metricool и с подтверждением.");
         if (q.equals("включи бесплатный режим") ||
@@ -68,7 +68,7 @@ public final class WolfCommandRouter {
                 q.startsWith("проверь своё решение") ||
                 q.startsWith("проверь свое решение"))
             return new Decision(Kind.DEEP_LOCAL,text,
-                    "Три реальных локальных этапа: план, ответ, критическая проверка.");
+                    "От 1 до 4 локальных проходов по настройкам.");
         if (contains(q, "что ты умеешь", "твои возможности", "инструкция",
                 "как пользоваться", "помощь", "/help", "расскажи о себе"))
             return new Decision(Kind.HELP, "", "Показать возможности и ограничения.");
