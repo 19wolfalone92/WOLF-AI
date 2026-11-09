@@ -78,8 +78,8 @@ class HungChatRegression(unittest.TestCase):
         self.assertNotIn("HfBrainClient", home.split("private void confirmFastModel()", 1)[1].split(
             "private void openPhoneAiProfile()",1)[0])
         gradle=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '17.2.0'", gradle)
-        self.assertIn("versionCode 28", gradle)
+        self.assertIn("versionName '17.3.0'", gradle)
+        self.assertIn("versionCode 29", gradle)
 
 
 if __name__ == "__main__":
