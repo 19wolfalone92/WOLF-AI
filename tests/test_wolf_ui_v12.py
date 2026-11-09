@@ -71,7 +71,8 @@ class WOLF12AssistedAutonomy(unittest.TestCase):
         service=java("WolfAccessibilityService")
         self.assertNotIn("Runtime.getRuntime().exec", service)
         self.assertNotIn("getText().toString()", service)
-        self.assertIn("!node.isPassword()", service)
+        self.assertIn("AssistivePolicy.isSensitiveField(", service)
+        self.assertIn("hasSensitiveField(root)", service)
         self.assertIn("AssistivePolicy.allowedPackage(app, getPackageName())", service)
 
     def test_actual_jvm_release_gate(self):
@@ -79,7 +80,7 @@ class WOLF12AssistedAutonomy(unittest.TestCase):
         self.assertIn("AssistedNavigationTest.java", workflow)
         self.assertIn("ai.wolf.autopilot.AssistedNavigationTest", workflow)
         gradle=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '17.2.0'", gradle)
+        self.assertIn("versionName '17.3.0'", gradle)
 
 
 if __name__ == "__main__":

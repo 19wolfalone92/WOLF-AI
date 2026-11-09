@@ -74,6 +74,20 @@ jobs:
             tests/java/MetricoolBatchParserTest.java
           java -ea -cp "$RUNNER_TEMP/wolf-batch-tests" \
             ai.wolf.autopilot.MetricoolBatchParserTest
+      - name: Test Java password masking, RAM/thermal/battery fallback and task contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-security-policy"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-security-policy" \
+            android/app/src/main/java/ai/wolf/autopilot/SensitiveText.java \
+            android/app/src/main/java/ai/wolf/autopilot/LocalResourcePolicy.java \
+            android/app/src/main/java/ai/wolf/autopilot/SafeNetworkRetry.java \
+            android/app/src/main/java/ai/wolf/autopilot/AssistivePolicy.java \
+            android/app/src/main/java/ai/wolf/autopilot/CommandParser.java \
+            tests/java/WolfPrivacyResourceTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-security-policy" \
+            ai.wolf.autopilot.WolfPrivacyResourceTest
       - name: Test real assisted navigation policy on JVM
         shell: bash
         run: |

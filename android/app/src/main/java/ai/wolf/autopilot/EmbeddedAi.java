@@ -11,6 +11,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Entirely embedded offline inference: native llama.cpp + bundled Qwen GGUF.
@@ -23,6 +26,11 @@ public final class EmbeddedAi {
     private static final long EXPECTED_BYTES = 428_000_000L;
     private static final Object LOCK = new Object();
     private static final AtomicLong CANCEL_EPOCH = new AtomicLong();
+    private static final AtomicBoolean IDLE_UNLOAD_QUEUED=new AtomicBoolean(false);
+    private static final ExecutorService IDLE_UNLOAD=Executors.newSingleThreadExecutor(r->{
+        Thread t=new Thread(r,"wolf-idle-llama-unload");
+        t.setDaemon(true);return t;
+    });
     private static String loadedPath = null;
 
     static {
@@ -115,6 +123,11 @@ public final class EmbeddedAi {
                 nativeUnload();
                 loadedPath = null;
             }
+            // Transient safety downgrade only: do NOT permanently disable or
+            // delete a user's downloaded model after temporary thermal/RAM pressure.
+            LocalResourcePolicy resources=LocalResourceGuard.read(app);
+            boolean downgraded=imported!=null && !resources.useImported(imported.length());
+            if(downgraded)imported=null;
             File source = imported == null ? model(app) : imported;
             String path = source.getAbsolutePath();
             if (!path.equals(loadedPath)) {
@@ -138,7 +151,9 @@ public final class EmbeddedAi {
                     "Qwen2.5-Coder 0.5B (встроенная)") +
                     ": загружена на устройстве без облачного API."+
                     (ModelVault.summary(app).contains("Предыдущая модель не запустилась")?
-                    "\n⚠️ Импортированный GGUF был отключён, работает резервная 0.5B." : "");
+                    "\n⚠️ Импортированный GGUF был отключён, работает резервная 0.5B." : "")+
+                    (downgraded ? "\n"+resources.warning()+
+                    " Временно используется встроенная Qwen 0.5B." : "");
         }
     }
 
@@ -218,12 +233,15 @@ public final class EmbeddedAi {
         prompt.append("<|im_start|>user\n")
               .append(question.trim().replace("<|im_start|>", "").replace("<|im_end|>", ""))
               .append("<|im_end|>\n<|im_start|>assistant\n");
-        int budget = ThinkingDepth.clampTokens(outputTokens);
+        LocalResourcePolicy resources=LocalResourceGuard.read(context);
+        int budget = resources.tokens(ThinkingDepth.clampTokens(outputTokens));
         // Any imported Qwen3 may spend the entire budget on hidden thinking.
         // Use the Qwen3 chat-template /no_think user suffix when supported.
         // /no_think belongs inside the final USER message, not the assistant header.
         String body = prompt.toString();
-        if (ModelVault.active(context) != null &&
+        File activePromptModel=ModelVault.active(context);
+        if (activePromptModel != null &&
+                resources.useImported(activePromptModel.length()) &&
                 ModelVault.name(context).toLowerCase(java.util.Locale.ROOT).contains("qwen3")) {
             String boundary = "<|im_end|>\n<|im_start|>assistant\n";
             int boundaryPos = body.lastIndexOf(boundary);
@@ -244,6 +262,15 @@ public final class EmbeddedAi {
                 throw new IllegalStateException(output);
             return output;
         }
+    }
+
+    /** Android may request RAM while GGUF is busy. Queue unload away from UI. */
+    public static void unloadWhenIdle() {
+        if(!IDLE_UNLOAD_QUEUED.compareAndSet(false,true))return;
+        IDLE_UNLOAD.execute(()->{
+            try { unload(); }
+            finally { IDLE_UNLOAD_QUEUED.set(false); }
+        });
     }
 
     public static void unload() {

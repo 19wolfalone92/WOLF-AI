@@ -78,9 +78,9 @@ public final class GithubApi {
 
     /** 204 Accepted means only that a workflow request was accepted. */
     public static String dispatch(String project, String mode, String uid, String token) throws Exception {
-        if (!CommandParser.validProject(project) || !("audit".equals(mode) || "test".equals(mode)))
+        if (!CommandParser.validProject(project) || !CommandParser.validMode(mode))
             throw new IllegalArgumentException("Недопустимый тип проверки.");
-        if (uid == null || !uid.matches("w[a-f0-9]{32}"))
+        if (!CommandParser.validTaskUid(uid))
             throw new IllegalArgumentException("Недопустимый идентификатор задачи.");
         if (token == null || token.isEmpty())
             throw new IllegalStateException("Для запуска нужен GitHub-токен с правом Actions: Read and write.");
@@ -119,8 +119,8 @@ public final class GithubApi {
     public static String dispatchAgent(String project, String mode, String uid,
                                        String goal, boolean safeFix, String token) throws Exception {
         if (!CommandParser.validProject(project) ||
-                !("audit".equals(mode) || "test".equals(mode)) ||
-                uid == null || !uid.matches("w[a-f0-9]{32}") ||
+                !CommandParser.validMode(mode) ||
+                !CommandParser.validTaskUid(uid) ||
                 goal == null || goal.trim().length() < 3 || goal.length() > 600)
             throw new IllegalArgumentException("Недопустимые параметры агентной миссии.");
         if (safeFix && !("wolf".equals(project) && "test".equals(mode)))
@@ -154,16 +154,31 @@ public final class GithubApi {
         }
     }
 
+    /** Only idempotent GET requests are retried. Never workflow POST. */
+    private static String reliableReadOnlyGet(String path,String token) throws Exception {
+        for(int attempt=0;attempt<3;attempt++) {
+            HttpURLConnection con=null;
+            try {
+                con=open(path,"GET",token);
+                int code=con.getResponseCode();
+                String response=body(con);
+                if(code==200)return response;
+                if(!SafeNetworkRetry.retryGetStatus(code,attempt))
+                    throw new IllegalStateException("GitHub GET HTTP "+code);
+            } catch(java.net.SocketTimeoutException timeout) {
+                if(attempt>=2)throw timeout;
+            } finally {
+                if(con!=null)con.disconnect();
+            }
+            Thread.sleep(SafeNetworkRetry.delayMs(attempt));
+        }
+        throw new IllegalStateException("GitHub не ответил после трёх безопасных GET-попыток.");
+    }
+
     private static List<RunInfo> runsFor(String workflow, String token, boolean agent)
             throws Exception {
-        HttpURLConnection con = open(workflow + "/runs?per_page=50", "GET", token);
-        try {
-            int code = con.getResponseCode();
-            String response = body(con);
-            if (code != 200)
-                throw new IllegalStateException("Не удалось прочитать запуски " +
-                        (agent ? "Agent" : "Audit") + " (HTTP " + code + ").");
-            JSONArray array = new JSONObject(response).getJSONArray("workflow_runs");
+        String response=reliableReadOnlyGet(workflow + "/runs?per_page=50",token);
+        JSONArray array = new JSONObject(response).getJSONArray("workflow_runs");
             List<RunInfo> result = new ArrayList<>();
             for (int i = 0; i < array.length() && i < 50; i++) {
                 JSONObject item = array.getJSONObject(i);
@@ -179,8 +194,7 @@ public final class GithubApi {
                         timestamp, agent));
             }
             return result;
-        } finally { con.disconnect(); }
-    }
+     }
 
     /** Real audit + agent runs, newest first; no assumption that dispatch completed. */
     public static List<RunInfo> runs(String token) throws Exception {
@@ -194,12 +208,9 @@ public final class GithubApi {
     /** Human-readable evidence from GitHub's real job/step result API. */
     public static String jobSummary(long runId, String token) throws Exception {
         if (runId <= 0) throw new IllegalArgumentException("Недопустимый запуск.");
-        HttpURLConnection con = open("/actions/runs/" + runId + "/jobs?per_page=30", "GET", token);
-        try {
-            int code = con.getResponseCode();
-            String response = body(con);
-            if (code != 200) throw new IllegalStateException("Детали запуска недоступны: HTTP " + code);
-            JSONArray jobs = new JSONObject(response).getJSONArray("jobs");
+        String response=reliableReadOnlyGet(
+                "/actions/runs/" + runId + "/jobs?per_page=30",token);
+        JSONArray jobs = new JSONObject(response).getJSONArray("jobs");
             StringBuilder result = new StringBuilder();
             for (int i = 0; i < jobs.length() && i < 20; i++) {
                 JSONObject job = jobs.getJSONObject(i);
@@ -218,8 +229,5 @@ public final class GithubApi {
                 }
             }
             return result.length() == 0 ? "GitHub ещё не вернул результаты шагов." : result.toString();
-        } finally {
-            con.disconnect();
-        }
-    }
+     }
 }

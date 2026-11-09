@@ -9,6 +9,13 @@ public final class CommandParser {
     };
     private CommandParser() {}
 
+    /** Must match contracts/agent_dispatch_v1.json, checked by CI. */
+    public static boolean validMode(String mode) {
+        return "audit".equals(mode) || "test".equals(mode);
+    }
+    public static boolean validTaskUid(String uid) {
+        return uid != null && uid.matches("w[a-f0-9]{32}");
+    }
     public static boolean validProject(String project) {
         for (String item : PROJECTS) if (item.equals(project)) return true;
         return false;

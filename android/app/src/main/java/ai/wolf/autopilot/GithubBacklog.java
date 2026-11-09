@@ -74,8 +74,8 @@ public final class GithubBacklog {
             throw new IllegalStateException("Нужен GitHub PAT с разрешением Issues: Read and write на WOLF-AI.");
         if (text == null || text.trim().length() < 5 || text.length() > 600 ||
                 !CommandParser.validProject(project) ||
-                !("audit".equals(mode) || "test".equals(mode)) ||
-                uid == null || !uid.matches("w[a-f0-9]{32}"))
+                !CommandParser.validMode(mode) ||
+                !CommandParser.validTaskUid(uid))
             throw new IllegalArgumentException("Некорректный текст или параметры задания.");
         if (suspectedSecret(text))
             throw new IllegalArgumentException("В задании обнаружен возможный секрет. Удали его.");

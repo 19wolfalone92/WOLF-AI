@@ -28,6 +28,23 @@ public final class AssistivePolicy {
         return true;
     }
     /**
+     * Android InputType variation values, here in pure Java for JVM tests.
+     * Never read text from a password input or inspect/navigate its screen.
+     */
+    public static boolean isSensitiveField(boolean passwordFlag,
+                                            CharSequence className,int inputType) {
+        if(passwordFlag)return true;
+        int kind=inputType&0x0000000f;
+        int variation=inputType&0x00000ff0;
+        boolean textPassword=kind==0x01 &&
+                (variation==0x80 || variation==0x90 || variation==0xe0);
+        boolean numberPassword=kind==0x02 && variation==0x10;
+        String clazz=normalize(className);
+        return textPassword || numberPassword ||
+                clazz.contains("password") || clazz.contains("pinentry");
+    }
+
+    /**
      * A matching child label can be wrapped in a clickable ancestor.
      * Never click a dangerous parent, editable container or password field,
      * even when the matching child itself looks harmless.

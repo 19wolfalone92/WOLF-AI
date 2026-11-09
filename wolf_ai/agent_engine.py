@@ -63,6 +63,10 @@ def make_plan(project: str, mode: str, goal: str, *, safe_fix: bool = False) -> 
         raise AgentError("Goal resembles a credential: remove secrets")
     if safe_fix and not (project == "wolf" and mode == "test"):
         raise AgentError("Local auto-fix is restricted to WOLF Python tests")
+    from wolf_ai.dispatch_contract import validate_dispatch
+    validate_dispatch({"project": project, "mode": mode,
+                       "client_task_id": "manual", "goal": goal,
+                       "safe_fix": safe_fix})
     steps = ["inventory", "execute_allowlisted_checks", "diagnose_failures"]
     if safe_fix:
         steps.append("safe_python_repair")
