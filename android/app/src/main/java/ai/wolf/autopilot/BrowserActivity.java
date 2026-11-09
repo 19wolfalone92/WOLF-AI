@@ -498,7 +498,7 @@ public final class BrowserActivity extends Activity {
                             "if(!r.width||!r.height)continue;" +
                             "const text=(el.innerText||'').trim().slice(0,220);" +
                             "if(!text)continue;parts.push(text);size+=text.length;}" +
-                            "return parts.join('\n').slice(0,1700);})()";
+                            "return parts.join('\\n').slice(0,1700);})()";
                     page.evaluateJavascript(script,json->{
                         if(page==null||isFinishing()||isDestroyed())return;
                         String evidence=responseString(json);
