@@ -27,6 +27,25 @@ public final class AssistivePolicy {
         for (String marker : disallowed) if (s.contains(marker)) return false;
         return true;
     }
+    /**
+     * A matching child label can be wrapped in a clickable ancestor.
+     * Never click a dangerous parent, editable container or password field,
+     * even when the matching child itself looks harmless.
+     */
+    public static boolean safeClickableContainer(CharSequence className,
+                                                   CharSequence text,
+                                                   CharSequence description) {
+        String clazz=normalize(className);
+        if(clazz.contains("edittext") || clazz.contains("password") ||
+                clazz.contains("webview") || clazz.contains("autocompletetextview"))
+            return false;
+        String visible=normalize(text);
+        String announced=normalize(description);
+        if(!visible.isEmpty() && !allowedLabel(visible))return false;
+        if(!announced.isEmpty() && !allowedLabel(announced))return false;
+        return true;
+    }
+
     public static boolean allowedPackage(String candidate, String self) {
         if (candidate == null || candidate.length() < 3 ||
                 candidate.length() > 150 || candidate.equals(self)) return false;
