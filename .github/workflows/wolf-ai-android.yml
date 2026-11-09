@@ -114,6 +114,16 @@ jobs:
         shell: bash
         run: |
           python3 -B -m unittest discover -s tests -p 'test_wolf_free_first_v15.py' -v
+      - name: Test real depth and TikTok chat routing on JVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/wolf-studio-routing"
+          javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-studio-routing" \
+            android/app/src/main/java/ai/wolf/autopilot/WolfCommandRouter.java \
+            tests/java/WolfDepthTikTokTest.java
+          java -ea -cp "$RUNNER_TEMP/wolf-studio-routing" \
+            ai.wolf.autopilot.WolfDepthTikTokTest
       - name: Test true depth configuration and direct TikTok Studio Android behavior
         shell: bash
         run: |
