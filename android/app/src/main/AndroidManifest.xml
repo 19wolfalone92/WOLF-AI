@@ -45,6 +45,7 @@
                 android:resource="@xml/wolf_accessibility_service" />
         </service>
         <activity android:name=".ModelCatalogActivity" android:exported="false" />
+        <activity android:name=".PhoneAiProfileActivity" android:exported="false" />
         <activity android:name=".DepthSettingsActivity" android:exported="false" />
         <activity android:name=".TikTokStudioActivity" android:exported="false" />
         <activity android:name=".CloudBrainSettingsActivity" android:exported="false" />
