@@ -36,7 +36,7 @@ class KnowledgeReleaseContracts(unittest.TestCase):
         self.assertIn('new String[]{match.toString()}', source)
         self.assertIn('return "[" + source + " · фрагмент " + segment + "]"', source)
         self.assertIn("База в памяти телефона", (JAVA / "MainActivity.java").read_text("utf-8"))
-        self.assertIn("EmbeddedAi.ask(app, request, history, facts)", answer)
+        self.assertIn("EmbeddedAi.ask(app, request, history, facts, maxTokens)", answer)
         self.assertIn("Наличие фрагмента не доказывает", answer)
         self.assertIn("documents.search(question, 3)", answer)
         self.assertIn("knowledge.deleteDocument", (JAVA / "MainActivity.java").read_text("utf-8"))
