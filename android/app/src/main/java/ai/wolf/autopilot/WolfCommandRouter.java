@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, SHORT_PROMPT, RETRY_PREVIOUS, PHONE_PROFILE, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, SHORT_PROMPT, RETRY_PREVIOUS, PHONE_PROFILE, FAST_MODEL, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, DEPTH_SETTINGS, TIKTOK_STUDIO, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -27,6 +27,15 @@ public final class WolfCommandRouter {
             return new Decision(Kind.CHAT, "", "Напиши вопрос.");
         String text = raw.trim();
         String q = text.toLowerCase(Locale.ROOT);
+        if (q.equals("верни быструю модель") ||
+                q.equals("переключи на быструю модель") ||
+                q.equals("включи qwen 0.5b") ||
+                q.equals("верни qwen 0.5b") ||
+                q.equals("сбрось тяжелую модель") ||
+                q.equals("сбрось тяжёлую модель"))
+            return new Decision(Kind.FAST_MODEL,text,
+                    "Отключить медленный импортированный GGUF и включить 0.5B.");
+
         if (q.contains("параметры моего телефона") ||
                 q.contains("параметры телефона") ||
                 q.contains("проверь характеристики телефона") ||
