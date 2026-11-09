@@ -48,6 +48,10 @@ public final class WolfAccessibilityService extends AccessibilityService {
     public static String arm(String type, String target) {
         WolfAccessibilityService svc = connected;
         if (svc == null) return "Служба Android недоступна: включи WOLF в настройках специальных возможностей.";
+        if (!AccessibilityConsent.accepted(svc))
+            return "Нет отдельного согласия на доступ к интерфейсам. " +
+                    "Открой WOLF → управление приложениями и подтверди " +
+                    "раскрытие данных перед использованием.";
         if (!(type.equals("click") || type.equals("scroll") || type.equals("sequence") || type.equals("inspect")))
             throw new IllegalArgumentException("Недопустимое действие.");
         if (type.equals("click") && !AssistivePolicy.allowedLabel(target))
@@ -98,6 +102,12 @@ public final class WolfAccessibilityService extends AccessibilityService {
     private void attemptPending() {
         Request request = pending;
         if (request == null) return;
+        // Consent can be revoked while the Android service remains enabled.
+        if (!AccessibilityConsent.accepted(this)) {
+            pending = null;
+            lastResult = "Согласие отозвано. Действие отменено.";
+            return;
+        }
         long now = SystemClock.elapsedRealtime();
         if (now > request.expires) {
             pending = null;
@@ -231,7 +241,10 @@ public final class WolfAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo current = node;
         for (int depth=0; depth<4 && current!=null; depth++) {
             if (current.isClickable() && current.isEnabled() &&
-                    current.isVisibleToUser() && !current.isPassword())
+                    current.isVisibleToUser() && !current.isPassword() &&
+                    AssistivePolicy.safeClickableContainer(
+                            current.getClassName(), current.getText(),
+                            current.getContentDescription()))
                 return current;
             current = current.getParent();
         }
