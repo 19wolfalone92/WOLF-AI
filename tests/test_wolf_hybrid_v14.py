@@ -88,7 +88,8 @@ class HybridReleaseContracts(unittest.TestCase):
         self.assertIn('setTitle("🤖 Запустить публичного исследовательского агента?")',home)
         self.assertIn('listNavigationLabels(root)',accessibility)
         self.assertIn('if ("inspect".equals(request.type))',accessibility)
-        self.assertIn('!node.isPassword()',accessibility)
+        self.assertIn('AssistivePolicy.isSensitiveField(',accessibility)
+        self.assertIn('hasSensitiveField(root)',accessibility)
         self.assertIn('WolfAccessibilityService.status()',home)
 
     def test_android_compilation_gates_updated(self):
