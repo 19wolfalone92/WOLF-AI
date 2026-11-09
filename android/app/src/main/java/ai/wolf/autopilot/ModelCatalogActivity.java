@@ -108,8 +108,8 @@ public final class ModelCatalogActivity extends Activity {
                 String.format(Locale.ROOT,"Общая RAM: %.1f ГБ.",ram/1e9);
         new AlertDialog.Builder(this)
                 .setTitle("Скачать "+entry.title+" по Wi-Fi?")
-                .setMessage(OfflineModelCatalog.describe(entry)+"\\n"+
-                        memory+"\\n\\nПонадобится дополнительно около "+
+                .setMessage(OfflineModelCatalog.describe(entry)+"\n"+
+                        memory+"\n\nПонадобится дополнительно около "+
                         String.format(Locale.ROOT,"%.1f ГБ",entry.maxBytes*2.0/1e9)+
                         " для скачивания и проверенной установки. " +
                         "Сеть мобильного оператора не используется. " +
@@ -194,7 +194,7 @@ public final class ModelCatalogActivity extends Activity {
                         String.format(Locale.ROOT,"%.0f МБ",current/1e6) +
                         (total>0?" / "+String.format(Locale.ROOT,"%.0f МБ",total/1e6):"")+
                         (state==DownloadManager.STATUS_PAUSED?
-                                "\\nОжидает Wi-Fi/сеть или разрешения DownloadManager.":""));
+                                "\nОжидает Wi-Fi/сеть или разрешения DownloadManager.":""));
             }
         } catch(Exception ex) {
             status.setText("Загрузка продолжается. Проверка статуса недоступна.");
