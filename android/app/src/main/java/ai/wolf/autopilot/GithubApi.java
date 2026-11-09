@@ -78,9 +78,9 @@ public final class GithubApi {
 
     /** 204 Accepted means only that a workflow request was accepted. */
     public static String dispatch(String project, String mode, String uid, String token) throws Exception {
-        if (!CommandParser.validProject(project) || !("audit".equals(mode) || "test".equals(mode)))
+        if (!CommandParser.validProject(project) || !CommandParser.validMode(mode))
             throw new IllegalArgumentException("Недопустимый тип проверки.");
-        if (uid == null || !uid.matches("w[a-f0-9]{32}"))
+        if (!CommandParser.validTaskUid(uid))
             throw new IllegalArgumentException("Недопустимый идентификатор задачи.");
         if (token == null || token.isEmpty())
             throw new IllegalStateException("Для запуска нужен GitHub-токен с правом Actions: Read and write.");
@@ -119,8 +119,8 @@ public final class GithubApi {
     public static String dispatchAgent(String project, String mode, String uid,
                                        String goal, boolean safeFix, String token) throws Exception {
         if (!CommandParser.validProject(project) ||
-                !("audit".equals(mode) || "test".equals(mode)) ||
-                uid == null || !uid.matches("w[a-f0-9]{32}") ||
+                !CommandParser.validMode(mode) ||
+                !CommandParser.validTaskUid(uid) ||
                 goal == null || goal.trim().length() < 3 || goal.length() > 600)
             throw new IllegalArgumentException("Недопустимые параметры агентной миссии.");
         if (safeFix && !("wolf".equals(project) && "test".equals(mode)))
