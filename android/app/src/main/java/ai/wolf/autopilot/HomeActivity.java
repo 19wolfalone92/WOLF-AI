@@ -775,7 +775,10 @@ public final class HomeActivity extends Activity {
         try { plan = AssistiveCommandParser.parse(instruction); }
         catch (Exception error) { reply("Команда не выполнена: " + error.getMessage()); return; }
         if ("status".equals(plan.type)) {
-            reply("🖱 " + WolfAccessibilityService.status());
+            new AlertDialog.Builder(this)
+                    .setTitle("🖱 Локальный статус управления")
+                    .setMessage(WolfAccessibilityService.status())
+                    .setPositiveButton("Закрыть",null).show();
             return;
         }
         if ("cancel".equals(plan.type)) {
@@ -816,6 +819,8 @@ public final class HomeActivity extends Activity {
                 "Нажать видимую кнопку «" + plan.label + "»" :
                 "sequence".equals(plan.type) ?
                 "Выполнить ограниченный маршрут: " + plan.label :
+                "inspect".equals(plan.type) ?
+                "Показать только безопасные видимые названия кнопок" :
                 "Прокрутить один раз";
         new AlertDialog.Builder(this)
                 .setTitle("sequence".equals(plan.type) ?
@@ -825,7 +830,7 @@ public final class HomeActivity extends Activity {
                         "WOLF попробует выполнить только подтверждённые " +
                         ("sequence".equals(plan.type) ?
                                 "пункты маршрута (до 4) в одном приложении. " :
-                                "одно действие в первом доступном приложении. ") +
+                                "одно наблюдение/действие в первом доступном приложении. ") +
                         "Действия в системных настройках, финансовых " +
                         "приложениях, пароли и отправка данных запрещены. " +
                         "Если кнопка не найдена однозначно, действие отменится.")
