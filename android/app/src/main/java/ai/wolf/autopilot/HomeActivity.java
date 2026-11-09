@@ -8,6 +8,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognizerIntent;
 import android.text.InputType;
 import android.text.method.LinkMovementMethod;
@@ -29,6 +31,7 @@ import java.util.Locale;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.Executors;
 
 /**
@@ -54,7 +57,14 @@ public final class HomeActivity extends Activity {
     private static final int USER = Color.rgb(31, 73, 100);
     private static final int GOOD = Color.rgb(111, 224, 169);
 
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    // A cancelled native task may still finish unloading: rotate workers so
+    // future harmless commands never queue behind a stalled worker thread.
+    private ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private static final long RESPONSE_TIMEOUT_MS = 120_000L;
+    private long activeRequestSerial;
+    private Future<?> activeJob;
+    private Runnable activeTimeout;
     private ChatStore chat;
     private LearningStore learning;
     private KnowledgeBase documents;
@@ -68,6 +78,7 @@ public final class HomeActivity extends Activity {
     private EditText input;
     private TextView subtitle;
     private Button send;
+    private Button stopAnswer;
     private Button voiceAnswer;
     private Button voiceMode;
     private boolean busy;
@@ -220,7 +231,8 @@ public final class HomeActivity extends Activity {
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки",
                         "🔊 Проверить голос WOLF (тест Android TTS)",
-                        "📱 Реальные параметры телефона и подбор ИИ"
+                        "📱 Реальные параметры телефона и подбор ИИ",
+                        "⚡ Вернуть быструю встроенную Qwen 0.5B"
                 }, (dialog, which) -> {
                     switch (which) {
                         case 0: openGuide(); break;
@@ -239,6 +251,7 @@ public final class HomeActivity extends Activity {
                         case 13: confirmClearChat(); break;
                         case 14: testSpeech(); break;
                         case 15: openPhoneAiProfile(); break;
+                        case 16: confirmFastModel(); break;
                     }
                 }).show());
 
@@ -292,6 +305,11 @@ public final class HomeActivity extends Activity {
         send.setContentDescription("Отправить сообщение");
         row.addView(send, new LinearLayout.LayoutParams(dp(53), dp(52)));
         send.setOnClickListener(v -> sendCurrent());
+        stopAnswer = button("⏹ Остановить ответ · разблокировать чат", false);
+        composer.addView(stopAnswer,new LinearLayout.LayoutParams(-1,dp(44)));
+        stopAnswer.setVisibility(View.GONE);
+        stopAnswer.setOnClickListener(v -> cancelBackground(
+                "Ты остановил ожидание ответа."));
 
         LinearLayout bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER_VERTICAL);
@@ -456,14 +474,51 @@ public final class HomeActivity extends Activity {
 
     private void setBusy(boolean value, String status) {
         busy = value;
-        send.setEnabled(!value);
+        // NEVER trap users behind a disabled Send button during GGUF loading.
+        // A new message cancels the previous wait and is processed immediately.
+        send.setEnabled(true);
+        if (stopAnswer != null)
+            stopAnswer.setVisibility(value ? View.VISIBLE : View.GONE);
         subtitle.setText(status);
     }
 
+    private void clearTimeout() {
+        if (activeTimeout != null) {
+            ui.removeCallbacks(activeTimeout);
+            activeTimeout = null;
+        }
+    }
+
+    private void cancelBackground(String why) {
+        if (!busy) return;
+        // Invalidate any delayed / stale reply BEFORE signalling native code.
+        activeRequestSerial++;
+        clearTimeout();
+        Future<?> oldJob = activeJob;
+        activeJob = null;
+        if (oldJob != null) oldJob.cancel(true);
+        try {
+            EmbeddedAi.cancelCurrent();
+        } catch (Throwable nativeError) {
+            // Cancellation is still UI-successful if the native library failed
+            // to initialize. Never block Send on any JNI failure.
+        }
+        worker.shutdownNow();
+        worker = Executors.newSingleThreadExecutor();
+        setBusy(false, "● Готов к следующему вопросу");
+        addMessage(false, "⏹ " + why +
+                "\nМожно сразу писать снова. Если запрос затронул GitHub, " +
+                "публикацию или другой внешний сервис, отмена ожидания " +
+                "не гарантирует отмену уже отправленного действия.", true);
+    }
+
     private interface Action { String run() throws Exception; }
+
     private void background(Action action) {
-        setBusy(true, "● 🧠 Готовлю ответ… Первая загрузка модели может занять время.");
-        worker.execute(() -> {
+        if (busy) cancelBackground("Предыдущий ответ заменён новым.");
+        final long request = ++activeRequestSerial;
+        setBusy(true, "● 🧠 Готовлю ответ… Нажми «Остановить», если ожидание затянулось.");
+        activeJob = worker.submit(() -> {
             String result;
             try { result = action.run(); }
             catch (Exception error) {
@@ -474,17 +529,28 @@ public final class HomeActivity extends Activity {
             }
             final String answer = result;
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) return;
+                // A timed-out/cancelled task is never allowed to overwrite
+                // the next response or re-lock the Send button.
+                if (request != activeRequestSerial || isFinishing() || isDestroyed())
+                    return;
+                clearTimeout();
+                activeJob = null;
                 setBusy(false, "● Локальный ИИ · Интернет · Android");
                 reply(answer);
             });
         });
+        activeTimeout = () -> {
+            if (busy && request == activeRequestSerial)
+                cancelBackground("Превышено 120 секунд ожидания. " +
+                        "WOLF освободил чат, а не оставил кнопку отправки заблокированной.");
+        };
+        ui.postDelayed(activeTimeout, RESPONSE_TIMEOUT_MS);
     }
 
     private void sendCurrent() {
-        if (busy) return;
         String command = input.getText().toString().trim();
         if (command.isEmpty()) return;
+        if (busy) cancelBackground("Получен новый вопрос. Старый ответ остановлен.");
         if (command.length() > 2500) {
             new AlertDialog.Builder(this).setMessage(
                     "Сообщение слишком длинное (лимит 2500 символов). " +
@@ -496,6 +562,9 @@ public final class HomeActivity extends Activity {
         addMessage(true, command, true);
         WolfCommandRouter.Decision decision = WolfCommandRouter.route(command);
         switch (decision.kind) {
+            case FAST_MODEL:
+                confirmFastModel();
+                break;
             case PHONE_PROFILE:
                 openPhoneAiProfile();
                 reply("📱 Открыл диагностику твоего телефона. " +
@@ -772,6 +841,28 @@ public final class HomeActivity extends Activity {
                 "128–768 токенов и переключатель для всех обычных вопросов.");
     }
 
+    private void confirmFastModel() {
+        new AlertDialog.Builder(this)
+                .setTitle("⚡ Вернуться к быстрой Qwen 0.5B?")
+                .setMessage("Если модель Qwen3.5 2B/4B работает слишком " +
+                        "долго или не отвечает, переключись на встроенную 0.5B. " +
+                        "Импортированный GGUF останется на телефоне, " +
+                        "но больше не будет загружаться при следующем ответе.")
+                .setNegativeButton("Отмена",null)
+                .setPositiveButton("Переключить",(d,w)->{
+                    if(busy)cancelBackground("Переключаемся на быструю модель.");
+                    try {
+                        ModelVault.suspendUnsupported(this,
+                                "Отключена пользователем ради быстрого чата.");
+                        reply("✅ Встроенная Qwen 0.5B снова выбрана. " +
+                                "Теперь напиши «Привет», чтобы проверить ответ. " +
+                                "Большая модель не удалена.");
+                    } catch(Exception error) {
+                        reply("Не удалось переключить модель: "+error.getMessage());
+                    }
+                }).show();
+    }
+
     private void openPhoneAiProfile() {
         startActivity(new Intent(this,PhoneAiProfileActivity.class));
     }
@@ -781,10 +872,14 @@ public final class HomeActivity extends Activity {
     }
 
     private void runDeepLocal(String command) {
+        final long request=activeRequestSerial+1;
         background(()->OfflineThinker.run(getApplicationContext(),
                 command,documents,learning,chat.recent(8),stage->
                         runOnUiThread(()->{
-                            if(!isFinishing()&&!isDestroyed())
+                            // Delayed progress from a cancelled run must never
+                            // overwrite the new prompt/status.
+                            if(request==activeRequestSerial && busy &&
+                                    !isFinishing()&&!isDestroyed())
                                 subtitle.setText("🧠 "+stage);
                         })));
     }
@@ -1357,6 +1452,11 @@ public final class HomeActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        clearTimeout();
+        activeRequestSerial++;
+        if (activeJob != null) activeJob.cancel(true);
+        try { EmbeddedAi.cancelCurrent(); }
+        catch (Throwable nativeError) { /* UI must still close. */ }
         voiceSession = false;
         if (inAppVoice != null) inAppVoice.close();
         worker.shutdownNow();

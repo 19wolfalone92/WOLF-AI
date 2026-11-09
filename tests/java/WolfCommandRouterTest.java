@@ -21,6 +21,8 @@ public final class WolfCommandRouterTest {
         assertKind("Привет", WolfCommandRouter.Kind.CHAT);
         assertKind("Объясни закон Ома", WolfCommandRouter.Kind.CHAT);
         assertKind("Сколько будет 2+2?", WolfCommandRouter.Kind.CHAT);
+        assertKind("Верни быструю модель", WolfCommandRouter.Kind.FAST_MODEL);
+        assertKind("Сбрось тяжёлую модель", WolfCommandRouter.Kind.FAST_MODEL);
         assertKind("Что ты умеешь?", WolfCommandRouter.Kind.HELP);
         assertKind("Что ты можешь ?", WolfCommandRouter.Kind.HELP);
         assertKind("Что ты можешь делать?", WolfCommandRouter.Kind.HELP);
