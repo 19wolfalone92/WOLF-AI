@@ -448,6 +448,9 @@ public final class HomeActivity extends Activity {
             case RESEARCH:
                 confirmResearch(command);
                 break;
+            case AUTONOMOUS_RESEARCH:
+                confirmAutonomousResearch(command);
+                break;
             case CLOUD_AI:
                 confirmCloudBrain(command);
                 break;
@@ -512,6 +515,39 @@ public final class HomeActivity extends Activity {
         return q.contains("опубли") || q.contains("вылож") ||
                 q.contains("запланируй публикац") || q.contains("загрузи ролик") ||
                 q.contains("запости");
+    }
+
+    private void confirmAutonomousResearch(String command) {
+        String subject=command.trim().replaceFirst(
+                "(?iu)^\\s*(?:проведи автономное исследование|выполни исследование|" +
+                        "собери сравнительный отчёт|собери сравнительный отчет)\\s*[:—-]?\\s*","");
+        try { subject=CloudBrainPolicy.question(subject); }
+        catch(Exception error) {
+            reply("Укажи тему исследования: "+error.getMessage());return;
+        }
+        if(subject.length()>160) {
+            reply("Сократи тему исследования до 160 символов.");return;
+        }
+        final String topic=subject;
+        new AlertDialog.Builder(this)
+                .setTitle("🤖 Запустить публичного исследовательского агента?")
+                .setMessage("Цель: "+topic+"\\n\\nПлан: 1) два поисковых " +
+                        "запроса в открытый интернет; 2) чтение максимум " +
+                        "четырёх публичных HTTPS-страниц; 3) локальная " +
+                        "сводка Qwen; 4) точные ссылки и отчёт о каждой " +
+                        "проверке. Не будут отправлены история, локальные " +
+                        "заметки, документы, cookies или пароли. " +
+                        "Агент не получает права нажимать кнопки в аккаунтах " +
+                        "или записывать что-либо на внешние сайты.")
+                .setNegativeButton("Отмена",null)
+                .setPositiveButton("Разрешаю исследование",(d,w)->
+                        background(()->PublicResearchAgent.run(
+                                getApplicationContext(),topic,stage->
+                                        runOnUiThread(()->{
+                                            if(!isFinishing()&&!isDestroyed())
+                                                subtitle.setText("🧭 "+stage);
+                                        }))))
+                .show();
     }
 
     private void confirmResearch(String instruction) {
