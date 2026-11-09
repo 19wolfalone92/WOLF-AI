@@ -143,6 +143,9 @@ public final class EmbeddedAi {
         if (question == null || question.trim().length() < 3 || question.length() > 2500)
             throw new IllegalArgumentException("Длина вопроса должна быть 3–2500 символов.");
         check(context);
+        int contextTokens=PhoneAiProfileActivity.current(context).contextTokens;
+        int historyLimit=contextTokens<=2048?6:contextTokens<=3072?9:12;
+        int messageCharacters=contextTokens<=2048?240:contextTokens<=3072?330:400;
         StringBuilder prompt = new StringBuilder();
         prompt.append("<|im_start|>system\n")
               .append("Ты WOLF AI — собеседник и помощник на Android с локальной ")
@@ -175,12 +178,13 @@ public final class EmbeddedAi {
             prompt.append("<|im_end|>\n");
         }
         if (history != null) {
-            int start = Math.max(0, history.size() - 12);
+            int start = Math.max(0, history.size() - historyLimit);
             for (int i = start; i < history.size(); i++) {
                 ChatStore.Message item = history.get(i);
                 if (!("user".equals(item.role) || "assistant".equals(item.role))) continue;
                 String text = item.text;
-                if (text.length() > 400) text = text.substring(0, 400);
+                if (text.length() > messageCharacters)
+                    text = text.substring(0, messageCharacters);
                 text = text.replace("<|im_start|>", "").replace("<|im_end|>", "");
                 prompt.append("<|im_start|>").append(item.role).append("\n")
                       .append(text).append("<|im_end|>\n");
@@ -205,7 +209,6 @@ public final class EmbeddedAi {
         synchronized (LOCK) {
             check(context);
             // RAM-aware KV cache: smaller context on RAM-constrained phones.
-            int contextTokens=PhoneAiProfileActivity.current(context).contextTokens;
             String output = nativeGenerate(body, budget, contextTokens);
             if (output.startsWith("Ошибка локального ИИ:"))
                 throw new IllegalStateException(output);
