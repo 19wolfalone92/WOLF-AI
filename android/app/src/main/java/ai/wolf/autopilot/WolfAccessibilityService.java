@@ -48,7 +48,7 @@ public final class WolfAccessibilityService extends AccessibilityService {
     public static String arm(String type, String target) {
         WolfAccessibilityService svc = connected;
         if (svc == null) return "Служба Android недоступна: включи WOLF в настройках специальных возможностей.";
-        if (!(type.equals("click") || type.equals("scroll") || type.equals("sequence")))
+        if (!(type.equals("click") || type.equals("scroll") || type.equals("sequence") || type.equals("inspect")))
             throw new IllegalArgumentException("Недопустимое действие.");
         if (type.equals("click") && !AssistivePolicy.allowedLabel(target))
             throw new IllegalArgumentException("Опасная или слишком общая кнопка заблокирована.");
@@ -114,6 +114,12 @@ public final class WolfAccessibilityService extends AccessibilityService {
             return;
         }
         if (!AssistivePolicy.allowedPackage(app, getPackageName())) return;
+        if ("inspect".equals(request.type)) {
+            pending = null;
+            lastResult = "🔎 Доступные безопасные элементы в " + app + ":\\n" +
+                    listNavigationLabels(root);
+            return;
+        }
         if ("scroll".equals(request.type)) {
             pending = null; // Never repeat a scroll event.
             AccessibilityNodeInfo scroll = findScrollable(root);
@@ -157,6 +163,39 @@ public final class WolfAccessibilityService extends AccessibilityService {
                 if (pending == request) attemptPending();
             }, 900L);
         }
+    }
+
+    /**
+     * Only accessible visible clickable labels, no EditText contents,
+     * screenshots, passwords or full-page transcription. Volatile RAM only.
+     */
+    private static String listNavigationLabels(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+        java.util.LinkedHashSet<String> seen = new java.util.LinkedHashSet<>();
+        queue.add(root);
+        int nodes = 0;
+        while(!queue.isEmpty() && nodes++<MAX_NODES && seen.size()<16) {
+            AccessibilityNodeInfo node=queue.removeFirst();
+            if(node.isClickable() && node.isEnabled() &&
+                    node.isVisibleToUser() && !node.isPassword() &&
+                    (node.getClassName()==null ||
+                        !node.getClassName().toString().contains("EditText"))) {
+                CharSequence label=node.getContentDescription();
+                if(label==null || label.length()==0)label=node.getText();
+                String display=label==null?"":label.toString().trim();
+                if(display.length()<=70 && AssistivePolicy.allowedLabel(display))
+                    seen.add(display.replace('\\n',' '));
+            }
+            for(int i=0;i<node.getChildCount();i++) {
+                AccessibilityNodeInfo child=node.getChild(i);
+                if(child!=null)queue.addLast(child);
+            }
+        }
+        if(seen.isEmpty())return "Нет доступных безопасных кнопок. " +
+                "Приложение может скрывать элементы от Accessibility.";
+        StringBuilder out=new StringBuilder();
+        for(String value:seen)out.append("• ").append(value).append("\\n");
+        return out.toString();
     }
 
     private static AccessibilityNodeInfo findUniqueClickable(
