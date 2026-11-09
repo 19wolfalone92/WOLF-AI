@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Entirely embedded offline inference: native llama.cpp + bundled Qwen GGUF.
@@ -21,6 +22,7 @@ public final class EmbeddedAi {
             "9739055e046d62a937e5b7879012209ef40ebea8a1569a96028de491f3f091d5";
     private static final long EXPECTED_BYTES = 428_000_000L;
     private static final Object LOCK = new Object();
+    private static final AtomicLong CANCEL_EPOCH = new AtomicLong();
     private static String loadedPath = null;
 
     static {
@@ -29,8 +31,21 @@ public final class EmbeddedAi {
 
     private EmbeddedAi() {}
 
+    /** Safe from the UI thread; NEVER waits for model load or native decode. */
+    public static void cancelCurrent() {
+        CANCEL_EPOCH.incrementAndGet();
+        nativeCancel();
+    }
+
+    private static void throwIfCancelled(long epoch) throws InterruptedException {
+        if (Thread.currentThread().isInterrupted() || epoch != CANCEL_EPOCH.get())
+            throw new InterruptedException("Генерация отменена. Новый вопрос разрешён.");
+    }
+
     private static native String nativeLoad(String path);
     private static native String nativeGenerate(String prompt, int maxTokens, int contextTokens);
+    private static native void nativeCancel();
+    private static native void nativeResetCancel();
     private static native void nativeUnload();
 
     private static String hex(byte[] data) {
@@ -142,7 +157,10 @@ public final class EmbeddedAi {
                              int outputTokens) throws Exception {
         if (question == null || question.trim().length() < 3 || question.length() > 2500)
             throw new IllegalArgumentException("Длина вопроса должна быть 3–2500 символов.");
+        long epoch=CANCEL_EPOCH.get();
+        throwIfCancelled(epoch);
         check(context);
+        throwIfCancelled(epoch);
         int contextTokens=PhoneAiProfileActivity.current(context).contextTokens;
         int historyLimit=contextTokens<=2048?6:contextTokens<=3072?9:12;
         int messageCharacters=contextTokens<=2048?240:contextTokens<=3072?330:400;
@@ -207,8 +225,13 @@ public final class EmbeddedAi {
                         "\n/no_think" + body.substring(boundaryPos);
         }
         synchronized (LOCK) {
+            throwIfCancelled(epoch);
             check(context);
-            // RAM-aware KV cache: smaller context on RAM-constrained phones.
+            throwIfCancelled(epoch);
+            // Reset only while holding LOCK. New calls cannot clear a prior
+            // request's cancellation while it is still decoding.
+            nativeResetCancel();
+            throwIfCancelled(epoch);
             String output = nativeGenerate(body, budget, contextTokens);
             if (output.startsWith("Ошибка локального ИИ:"))
                 throw new IllegalStateException(output);
