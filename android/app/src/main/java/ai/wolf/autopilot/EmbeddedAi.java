@@ -108,6 +108,13 @@ public final class EmbeddedAi {
                 // Bad imports must never permanently break plain conversation.
                 ModelVault.suspendUnsupported(app, invalid.getMessage());
             }
+            // Free a heavy 2B/4B mmap BEFORE unpacking the 0.5B fallback.
+            // Otherwise a manual fallback can hit Android's OOM killer.
+            if (imported == null && loadedPath != null &&
+                    !loadedPath.endsWith(ASSET)) {
+                nativeUnload();
+                loadedPath = null;
+            }
             File source = imported == null ? model(app) : imported;
             String path = source.getAbsolutePath();
             if (!path.equals(loadedPath)) {
