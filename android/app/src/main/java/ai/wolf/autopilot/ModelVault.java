@@ -274,7 +274,7 @@ public final class ModelVault {
             if(hadOld)backup.delete();
             source.delete(); // Download manager target is app-private and verified.
             return "✅ "+entry.title+" установлена локально. SHA256: "+sha+
-                    "\\nГотово к проверке запуска. " +
+                    "\nГотово к проверке запуска. " +
                     "Модель работает без облачного API, но скорость и RAM зависят от телефона.";
         }
     }
