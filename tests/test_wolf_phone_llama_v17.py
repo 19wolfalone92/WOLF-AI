@@ -86,8 +86,8 @@ class SamsungMobileQwen35Contracts(unittest.TestCase):
         self.assertIn("Android",d)
         self.assertIn("не замеряли",d.lower())
         gradle=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '17.2.0'",gradle)
-        self.assertIn("versionCode 28",gradle)
+        self.assertIn("versionName '17.3.0'",gradle)
+        self.assertIn("versionCode 29",gradle)
         workflow=Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn("WolfPhoneProfileTest.java",workflow)
 
