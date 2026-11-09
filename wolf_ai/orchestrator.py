@@ -43,6 +43,9 @@ def recipes(project: str, mode: str) -> tuple[Step, ...]:
         raise ValueError('Unrecognized project; never execute arbitrary repository names')
     if mode not in {'audit', 'test'}:
         raise ValueError('Mode must be audit or test')
+    # GitHub Actions and Android use the same versioned, strict allowlist.
+    from wolf_ai.dispatch_contract import validate_dispatch
+    validate_dispatch({"project": project, "mode": mode, "client_task_id": "manual"})
     # All recipes are fixed by developers, not supplied by issue bodies or AI.
     syntax_code = (
         "from pathlib import Path; import ast; "
