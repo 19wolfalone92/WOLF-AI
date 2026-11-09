@@ -61,7 +61,6 @@ class AndroidPythonBoundary(unittest.TestCase):
         policy = source("AssistivePolicy.java")
         self.assertIn('getBoolean(KEY, false)', consent)
         self.assertIn('accessibility_disclosure_v2', consent)
-        self.assertIn('WHAT', 'WHAT')  # separate consent contract does not use English UI
         self.assertIn("потенциально личную информацию", consent)
         self.assertIn("не отправляются в облако", consent)
         self.assertIn('AccessibilityConsent.accepted(this)', home)
