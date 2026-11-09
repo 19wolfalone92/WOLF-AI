@@ -72,6 +72,7 @@ public final class HomeActivity extends Activity {
     private Button voiceMode;
     private boolean busy;
     private boolean aloud;
+    private boolean speakOnce;
     private boolean voiceSession;
     private boolean speechListening;
     private String lastAnswer = "";
@@ -128,6 +129,13 @@ public final class HomeActivity extends Activity {
         tasks = new TaskStore(this);
         secrets = new SecureStore(this);
         speaker = new SpeechCenter(this);
+        aloud = getSharedPreferences("wolf_voice_v1",MODE_PRIVATE)
+                .getBoolean("read_replies_aloud",false);
+        speaker.setStatusListener(message -> {
+            if (isFinishing() || isDestroyed() || subtitle == null) return;
+            subtitle.setText(message);
+            if (voiceSession) stopVoiceSession();
+        });
         inAppVoice = new InAppVoiceDialog(this, new InAppVoiceDialog.Listener() {
             @Override public void onListening() {
                 subtitle.setText("🎧 Слушаю твою команду…");
@@ -291,17 +299,27 @@ public final class HomeActivity extends Activity {
             startSpeechRecognition(); // one-shot external recognizer, no mic permission needed
         });
 
-        voiceAnswer = button("🔈 Ответ вслух: выкл", false);
+        voiceAnswer = button(aloud ?
+                "🔊 Ответ вслух: вкл" : "🔈 Ответ вслух: выкл", false);
         LinearLayout.LayoutParams voiceSize = new LinearLayout.LayoutParams(0, dp(41), 1.25f);
         voiceSize.setMargins(dp(9), 0, 0, 0);
         bottom.addView(voiceAnswer, voiceSize);
         voiceAnswer.setOnClickListener(v -> {
             aloud = !aloud;
+            getSharedPreferences("wolf_voice_v1", MODE_PRIVATE).edit()
+                    .putBoolean("read_replies_aloud", aloud).apply();
             voiceAnswer.setText(aloud ? "🔊 Ответ вслух: вкл" : "🔈 Ответ вслух: выкл");
             if (!aloud) {
                 voiceSession = false;
                 refreshVoiceMode();
                 speaker.stop();
+                subtitle.setText("🔈 Озвучка выключена.");
+            } else {
+                // Immediate audible test; previously enabling only changed a label.
+                String result = speaker.speak(
+                        "Привет! Я WOLF AI. Голос включён. Задай мне вопрос.");
+                subtitle.setText(result);
+                if (isTtsError(result)) showVoiceSettings(result);
             }
         });
 
@@ -311,6 +329,8 @@ public final class HomeActivity extends Activity {
             voiceSession = !voiceSession;
             if (voiceSession) {
                 aloud = true;
+                getSharedPreferences("wolf_voice_v1", MODE_PRIVATE).edit()
+                        .putBoolean("read_replies_aloud",true).apply();
                 voiceAnswer.setText("🔊 Ответ вслух: вкл");
                 refreshVoiceMode();
                 speaker.stop();
@@ -375,18 +395,50 @@ public final class HomeActivity extends Activity {
         conversationScroll.post(() -> conversationScroll.fullScroll(View.FOCUS_DOWN));
     }
 
+    private static boolean isTtsError(String result) {
+        return result.startsWith("В установленном Android") ||
+                result.startsWith("Язык ответа недоступен") ||
+                result.startsWith("Не удалось");
+    }
+
+    private void showVoiceSettings(String problem) {
+        if (isFinishing() || isDestroyed()) return;
+        new AlertDialog.Builder(this)
+                .setTitle("🔈 Нужен голосовой движок Android")
+                .setMessage(problem+"\n\nПроверь громкость мультимедиа. " +
+                        "В настройках синтеза речи выбери доступный движок и " +
+                        "установи русский голос. Это не требует платного API WOLF.")
+                .setNegativeButton("Закрыть",null)
+                .setPositiveButton("Открыть голосовые настройки",(d,w)->{
+                    try {
+                        startActivity(new Intent("android.settings.TTS_SETTINGS"));
+                    } catch(Exception error) {
+                        try {startActivity(new Intent(
+                                android.provider.Settings.ACTION_SETTINGS));}
+                        catch(Exception ignored) {
+                            subtitle.setText("Не удалось открыть системные настройки.");
+                        }
+                    }
+                }).show();
+    }
+
     private void reply(String text) {
         lastAnswer = text;
         addMessage(false, text, true);
         subtitle.setText("● Готов · напиши следующую команду");
-        if (aloud || voiceSession) {
+        boolean shouldSpeak = aloud || voiceSession || speakOnce;
+        speakOnce = false;
+        if (shouldSpeak) {
             String outcome = speaker.speak(text);
-            if (voiceSession && (outcome.startsWith("В установленном Android") ||
-                    outcome.startsWith("Язык ответа недоступен") ||
-                    outcome.startsWith("Не удалось"))) {
-                voiceSession = false;
-                refreshVoiceMode();
-                subtitle.setText("● Голосовой диалог завершён: нет доступного TTS");
+            if (isTtsError(outcome)) {
+                subtitle.setText("🔈 "+outcome);
+                if (voiceSession) {
+                    voiceSession = false;
+                    refreshVoiceMode();
+                }
+                showVoiceSettings(outcome);
+            } else {
+                subtitle.setText(outcome);
             }
         }
     }
@@ -399,7 +451,7 @@ public final class HomeActivity extends Activity {
 
     private interface Action { String run() throws Exception; }
     private void background(Action action) {
-        setBusy(true, "● Выполняю команду…");
+        setBusy(true, "● 🧠 Готовлю ответ… Первая загрузка модели может занять время.");
         worker.execute(() -> {
             String result;
             try { result = action.run(); }
@@ -434,8 +486,18 @@ public final class HomeActivity extends Activity {
         WolfCommandRouter.Decision decision = WolfCommandRouter.route(command);
         switch (decision.kind) {
             case HELP:
-                openGuide();
-                reply("Открыл русскую инструкцию. Пиши команды прямо в этом чате.");
+                // Do not launch a second screen or a 428MB GGUF for a simple
+                // question the user expects us to answer immediately.
+                reply(WolfHelp.capabilities());
+                if (command.toLowerCase(Locale.ROOT).matches(
+                        ".*(?:инструкция|как пользоваться|/help).*"))
+                    openGuide();
+                break;
+            case SHORT_PROMPT:
+                reply(WolfHelp.promptForEmpty());
+                break;
+            case RETRY_PREVIOUS:
+                retryPreviousQuestion();
                 break;
             case WEB_SEARCH:
                 if (decision.argument == null || decision.argument.trim().isEmpty()) {
@@ -544,6 +606,38 @@ public final class HomeActivity extends Activity {
                         command, documents, learning, chat.recent(8)).text);
                 break;
         }
+    }
+
+    private void retryPreviousQuestion() {
+        List<ChatStore.Message> items = chat.recent(20);
+        // Last message is the user's current retry request.
+        for (int i = items.size()-2; i>=0; i--) {
+            ChatStore.Message item=items.get(i);
+            if(!"user".equals(item.role))continue;
+            String previous=item.text == null ? "" : item.text.trim();
+            WolfCommandRouter.Kind kind=WolfCommandRouter.route(previous).kind;
+            if(kind==WolfCommandRouter.Kind.SHORT_PROMPT ||
+                    kind==WolfCommandRouter.Kind.RETRY_PREVIOUS)continue;
+            if(kind==WolfCommandRouter.Kind.HELP) {
+                reply(WolfHelp.capabilities());
+                return;
+            }
+            // Never replay external writes or a phone action from an
+            // ambiguous "you did not answer me" message.
+            if(kind==WolfCommandRouter.Kind.CHAT) {
+                reply(WolfHelp.recover(previous));
+                background(()->DocumentAssistant.ask(getApplicationContext(),
+                        previous,documents,learning,chat.recent(8)).text);
+                return;
+            }
+            reply("Предыдущая команда касалась действия: «"+
+                    previous.substring(0,Math.min(120,previous.length()))+
+                    "». Для безопасности я не повторяю публикации, " +
+                    "GitHub-запуски и действия с телефоном автоматически. " +
+                    "Напиши её ещё раз, если всё ещё нужно.");
+            return;
+        }
+        reply(WolfHelp.recover(null));
     }
 
     private boolean isPublishingRequest(String question) {
@@ -1117,6 +1211,9 @@ public final class HomeActivity extends Activity {
                 if (resultWords != null && !resultWords.isEmpty()) {
                     String recognized = resultWords.get(0);
                     input.setText(recognized);
+                    // A spoken question should get a spoken answer even when
+                    // the global read-aloud setting is turned off.
+                    speakOnce = true;
                     // Spoken commands use identical permissions to typed commands.
                     sendCurrent();
                 } else stopVoiceSession();
