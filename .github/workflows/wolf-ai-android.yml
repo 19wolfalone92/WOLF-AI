@@ -82,6 +82,7 @@ jobs:
           javac -encoding UTF-8 -d "$RUNNER_TEMP/wolf-security-policy" \
             android/app/src/main/java/ai/wolf/autopilot/SensitiveText.java \
             android/app/src/main/java/ai/wolf/autopilot/LocalResourcePolicy.java \
+            android/app/src/main/java/ai/wolf/autopilot/SafeNetworkRetry.java \
             android/app/src/main/java/ai/wolf/autopilot/AssistivePolicy.java \
             android/app/src/main/java/ai/wolf/autopilot/CommandParser.java \
             tests/java/WolfPrivacyResourceTest.java
