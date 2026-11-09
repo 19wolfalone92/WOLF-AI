@@ -104,6 +104,11 @@ public final class AssistedNavigationTest {
         check(WolfCommandRouter.route("Спроси облачный ИИ: дай план").kind ==
                 WolfCommandRouter.Kind.CLOUD_AI,
                 "explicit cloud model route");
+        check(AssistiveCommandParser.parse("Покажи кнопки приложения").type.equals("inspect"),
+                "read-only local button inspection command");
+        check(WolfCommandRouter.route("Покажи кнопки приложения").kind ==
+                WolfCommandRouter.Kind.UI_AUTOMATION,
+                "button inspection route");
         System.out.println("PASS: " + count + " assisted browser / Android route checks.");
     }
 }
