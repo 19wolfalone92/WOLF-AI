@@ -62,14 +62,14 @@ public final class MetricoolOAuth {
         return generator.generateKey();
     }
 
-    private void putSecret(JSONObject value) throws Exception {
+    private synchronized void putSecret(JSONObject value) throws Exception {
         Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
         c.init(Cipher.ENCRYPT_MODE, key());
         byte[] encrypted = c.doFinal(value.toString().getBytes(StandardCharsets.UTF_8));
         prefs.edit()
                 .putString("token_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString("token_nonce", Base64.encodeToString(c.getIV(), Base64.NO_WRAP))
-                .apply();
+                .commit();
     }
 
     private JSONObject getSecret() throws Exception {
@@ -233,21 +233,22 @@ public final class MetricoolOAuth {
                 "WOLF может прочитать список доступных инструментов.";
     }
 
-    private void saveTokenResponse(JSONObject response, String existingRefresh) throws Exception {
+    private synchronized void saveTokenResponse(JSONObject response, String existingRefresh) throws Exception {
         String access = response.optString("access_token", "");
         if (access.length() < 10 || access.length() > 5000)
             throw new IllegalStateException("Metricool не выдал корректный OAuth токен.");
         JSONObject value = new JSONObject();
         value.put("access_token", access);
-        value.put("refresh_token", response.optString("refresh_token",
-                existingRefresh == null ? "" : existingRefresh));
+        String rotated=response.optString("refresh_token","").trim();
+        if(rotated.isEmpty())rotated=existingRefresh==null?"":existingRefresh;
+        value.put("refresh_token", rotated);
         long lifetime = response.optLong("expires_in", 3600);
         if (lifetime < 60 || lifetime > 31_536_000) lifetime = 3600;
         value.put("expires_at", System.currentTimeMillis() + lifetime * 1000);
         putSecret(value);
     }
 
-    public String accessToken() throws Exception {
+    public synchronized String accessToken() throws Exception {
         JSONObject token = getSecret();
         String value = token.optString("access_token", "");
         if (value.isEmpty()) throw new IllegalStateException("Metricool MCP не подключён.");
@@ -255,8 +256,10 @@ public final class MetricoolOAuth {
                 token.optLong("expires_at", 0)) return value;
         String refresh = token.optString("refresh_token", "");
         if (refresh.isEmpty()) {
-            disconnect();
-            throw new IllegalStateException("Metricool OAuth истёк: подключись повторно.");
+            // Keep the encrypted record for diagnostics/re-authorization;
+            // do not silently erase the account on an expired access token.
+            throw new IllegalStateException("Metricool OAuth истёк и refresh_token недоступен. " +
+                    "Подключи Metricool повторно через настройки.");
         }
         JSONObject response = post(TOKEN, "application/x-www-form-urlencoded; charset=utf-8",
                 "grant_type=refresh_token" +
