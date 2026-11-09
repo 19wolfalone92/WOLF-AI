@@ -232,7 +232,8 @@ public final class HomeActivity extends Activity {
                         "🗑 Очистить историю переписки",
                         "🔊 Проверить голос WOLF (тест Android TTS)",
                         "📱 Реальные параметры телефона и подбор ИИ",
-                        "⚡ Вернуть быструю встроенную Qwen 0.5B"
+                        "⚡ Вернуть быструю встроенную Qwen 0.5B",
+                        "🔒 Отозвать согласие на управление приложениями"
                 }, (dialog, which) -> {
                     switch (which) {
                         case 0: openGuide(); break;
@@ -252,6 +253,7 @@ public final class HomeActivity extends Activity {
                         case 14: testSpeech(); break;
                         case 15: openPhoneAiProfile(); break;
                         case 16: confirmFastModel(); break;
+                        case 17: revokeAccessibilityConsent(); break;
                     }
                 }).show());
 
@@ -1086,6 +1088,46 @@ public final class HomeActivity extends Activity {
                         })).show();
     }
 
+    private void askAccessibilityConsent(String instruction) {
+        new AlertDialog.Builder(this)
+                .setTitle("🔐 Отдельное согласие: доступ к интерфейсу других приложений")
+                .setMessage(AccessibilityConsent.disclosure())
+                .setNegativeButton("Не разрешать", (d,w)->
+                        reply("Управление другими приложениями не включено. " +
+                                "Обычный чат, поиск и локальный ИИ работают без него."))
+                .setPositiveButton("Я согласен", (d,w)->{
+                    try {
+                        AccessibilityConsent.accept(this);
+                        // Consent is NOT equivalent to granting Android permission.
+                        // Continue the original user-requested step, still require
+                        // Android system settings and one-shot action confirmation.
+                        handleAssistive(instruction);
+                    } catch(Exception e) {
+                        reply("Не удалось сохранить согласие: "+e.getMessage());
+                    }
+                }).show();
+    }
+
+    private void revokeAccessibilityConsent() {
+        new AlertDialog.Builder(this)
+                .setTitle("Отозвать доступ к интерфейсам?")
+                .setMessage("WOLF отменит все незавершённые действия и запретит " +
+                        "новые до повторного согласия. Если служба уже включена " +
+                        "в Android, выключи её также в системных настройках.")
+                .setNegativeButton("Оставить",null)
+                .setPositiveButton("Отозвать и открыть настройки", (d,w)->{
+                    try {
+                        AccessibilityConsent.revoke(this);
+                        reply("Согласие Accessibility отозвано. " +
+                                "Новые действия WOLF заблокированы.");
+                        startActivity(new Intent(
+                                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch(Exception e) {
+                        reply("Не удалось завершить отзыв согласия: "+e.getMessage());
+                    }
+                }).show();
+    }
+
     private void handleAssistive(String instruction) {
         final AssistiveCommandParser.Plan plan;
         try { plan = AssistiveCommandParser.parse(instruction); }
@@ -1100,6 +1142,10 @@ public final class HomeActivity extends Activity {
         if ("cancel".equals(plan.type)) {
             WolfAccessibilityService.cancel();
             reply("Ожидающая команда управления отменена.");
+            return;
+        }
+        if (!AccessibilityConsent.accepted(this)) {
+            askAccessibilityConsent(instruction);
             return;
         }
         if ("enable".equals(plan.type) || !WolfAccessibilityService.available()) {
