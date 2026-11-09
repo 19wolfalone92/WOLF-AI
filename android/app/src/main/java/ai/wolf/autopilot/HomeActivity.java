@@ -531,7 +531,7 @@ public final class HomeActivity extends Activity {
         final String topic=subject;
         new AlertDialog.Builder(this)
                 .setTitle("🤖 Запустить публичного исследовательского агента?")
-                .setMessage("Цель: "+topic+"\\n\\nПлан: 1) два поисковых " +
+                .setMessage("Цель: "+topic+"\n\nПлан: 1) два поисковых " +
                         "запроса в открытый интернет; 2) чтение максимум " +
                         "четырёх публичных HTTPS-страниц; 3) локальная " +
                         "сводка Qwen; 4) точные ссылки и отчёт о каждой " +
@@ -614,9 +614,9 @@ public final class HomeActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Отправить один вопрос в Hugging Face?")
                 .setMessage("Модель: " + vault.model() +
-                        "\\n\\nТЕКСТ, КОТОРЫЙ УЙДЁТ В ОБЛАКО:\\n" +
+                        "\n\nТЕКСТ, КОТОРЫЙ УЙДЁТ В ОБЛАКО:\n" +
                         approvedQuestion +
-                        "\\n\\nИстория чата, документы, память, файлы и " +
+                        "\n\nИстория чата, документы, память, файлы и " +
                         "GitHub-токен НЕ передаются. Ответ будет только текстом; " +
                         "не выполнит никаких внешних действий. " +
                         "Бесплатные кредиты HF ограничены, возможны " +
