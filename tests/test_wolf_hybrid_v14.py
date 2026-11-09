@@ -93,7 +93,7 @@ class HybridReleaseContracts(unittest.TestCase):
 
     def test_android_compilation_gates_updated(self):
         version=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '14.0.0'",version)
+        self.assertIn("versionName '15.0.0'",version)
         workflow=Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn("WolfHybridBrainTest.java",workflow)
         self.assertIn("test_wolf_private_browser.py",workflow)
