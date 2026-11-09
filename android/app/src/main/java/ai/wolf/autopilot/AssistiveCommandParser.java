@@ -19,6 +19,10 @@ public final class AssistiveCommandParser {
         if (lower.equals("управление приложениями") ||
                 lower.equals("включи управление приложениями"))
             return new Plan("enable","");
+        if (lower.equals("покажи кнопки приложения") ||
+                lower.equals("посмотреть кнопки приложения") ||
+                lower.equals("список кнопок приложения"))
+            return new Plan("inspect","");
         if (lower.equals("статус управления") || lower.equals("проверить управление"))
             return new Plan("status","");
         if (lower.equals("отмени управление") || lower.equals("останови управление"))
