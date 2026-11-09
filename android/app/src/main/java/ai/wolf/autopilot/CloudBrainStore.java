@@ -30,11 +30,7 @@ public final class CloudBrainStore {
     }
 
     public static String validateModel(String value) {
-        String model = value == null ? "" : value.trim();
-        if (model.length() < 4 || model.length() > 100 ||
-                !model.matches("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)?"))
-            throw new IllegalArgumentException("Модель: организация/название[:провайдер].");
-        return model;
+        return CloudBrainPolicy.model(value);
     }
 
     private SecretKey key() throws Exception {
