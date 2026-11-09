@@ -66,10 +66,11 @@ public final class MetricoolOAuth {
         Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
         c.init(Cipher.ENCRYPT_MODE, key());
         byte[] encrypted = c.doFinal(value.toString().getBytes(StandardCharsets.UTF_8));
-        prefs.edit()
+        if (!prefs.edit()
                 .putString("token_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString("token_nonce", Base64.encodeToString(c.getIV(), Base64.NO_WRAP))
-                .commit();
+                .commit())
+            throw new IllegalStateException("Не удалось сохранить обновлённый OAuth-токен.");
     }
 
     private JSONObject getSecret() throws Exception {
