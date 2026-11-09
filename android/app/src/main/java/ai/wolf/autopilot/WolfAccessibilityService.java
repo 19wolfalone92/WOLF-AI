@@ -124,6 +124,14 @@ public final class WolfAccessibilityService extends AccessibilityService {
             return;
         }
         if (!AssistivePolicy.allowedPackage(app, getPackageName())) return;
+        // Do not even extract surrounding labels when an active visible
+        // password/visible-password/PIN field exists on this screen.
+        if (hasSensitiveField(root)) {
+            pending=null;
+            lastResult="⛔ Обнаружено защищённое поле ввода. " +
+                    "WOLF не читает кнопки и не управляет этим экраном.";
+            return;
+        }
         if ("inspect".equals(request.type)) {
             pending = null;
             lastResult = "🔎 Доступные безопасные элементы в " + app + ":\n" +
@@ -175,6 +183,26 @@ public final class WolfAccessibilityService extends AccessibilityService {
         }
     }
 
+    /** Read ONLY accessibility metadata, never the text of input fields. */
+    private static boolean hasSensitiveField(AccessibilityNodeInfo root) {
+        ArrayDeque<AccessibilityNodeInfo> queue=new ArrayDeque<>();
+        queue.add(root);
+        int inspected=0;
+        while(!queue.isEmpty() && inspected++<MAX_NODES) {
+            AccessibilityNodeInfo node=queue.removeFirst();
+            if(node.isVisibleToUser() &&
+                    AssistivePolicy.isSensitiveField(node.isPassword(),
+                            node.getClassName(),node.getInputType()))
+                return true;
+            for(int i=0;i<node.getChildCount();i++) {
+                AccessibilityNodeInfo child=node.getChild(i);
+                if(child!=null)queue.add(child);
+            }
+        }
+        // Incomplete security inspection -> deny, rather than act blindly.
+        return !queue.isEmpty();
+    }
+
     /**
      * Only accessible visible clickable labels, no EditText contents,
      * screenshots, passwords or full-page transcription. Volatile RAM only.
@@ -187,7 +215,9 @@ public final class WolfAccessibilityService extends AccessibilityService {
         while(!queue.isEmpty() && nodes++<MAX_NODES && seen.size()<16) {
             AccessibilityNodeInfo node=queue.removeFirst();
             if(node.isClickable() && node.isEnabled() &&
-                    node.isVisibleToUser() && !node.isPassword() &&
+                    node.isVisibleToUser() &&
+                    !AssistivePolicy.isSensitiveField(node.isPassword(),
+                            node.getClassName(),node.getInputType()) &&
                     (node.getClassName()==null ||
                         !node.getClassName().toString().contains("EditText"))) {
                 CharSequence label=node.getContentDescription();
@@ -217,7 +247,9 @@ public final class WolfAccessibilityService extends AccessibilityService {
         int seen = 0;
         while (!queue.isEmpty() && seen++ < MAX_NODES) {
             AccessibilityNodeInfo node = queue.removeFirst();
-            if (node.isVisibleToUser() && node.isEnabled() && !node.isPassword()) {
+            if (node.isVisibleToUser() && node.isEnabled() &&
+                    !AssistivePolicy.isSensitiveField(node.isPassword(),
+                            node.getClassName(),node.getInputType())) {
                 CharSequence label = node.getText();
                 CharSequence description = node.getContentDescription();
                 if (expected.equals(AssistivePolicy.normalize(label)) ||
@@ -241,7 +273,9 @@ public final class WolfAccessibilityService extends AccessibilityService {
         AccessibilityNodeInfo current = node;
         for (int depth=0; depth<4 && current!=null; depth++) {
             if (current.isClickable() && current.isEnabled() &&
-                    current.isVisibleToUser() && !current.isPassword() &&
+                    current.isVisibleToUser() &&
+                    !AssistivePolicy.isSensitiveField(current.isPassword(),
+                            current.getClassName(),current.getInputType()) &&
                     AssistivePolicy.safeClickableContainer(
                             current.getClassName(), current.getText(),
                             current.getContentDescription()))
