@@ -21,7 +21,8 @@ class UserVisibleResponseAndVoice(unittest.TestCase):
         self.assertIn('retryPreviousQuestion();',home)
         self.assertIn('if(kind==WolfCommandRouter.Kind.HELP)',home)
         self.assertIn('if(kind==WolfCommandRouter.Kind.CHAT)',home)
-        self.assertIn('никогда',quick.lower() if 'никогда' in quick.lower() else 'никогда')
+        self.assertIn('Финальную публикацию',quick)
+        self.assertIn('без обязательной подписки',quick)
         self.assertNotIn('EmbeddedAi.',quick)
         self.assertIn('TikTok Studio',quick)
 
