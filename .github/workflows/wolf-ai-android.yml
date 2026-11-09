@@ -114,6 +114,16 @@ jobs:
         shell: bash
         run: |
           python3 -B -m unittest discover -s tests -p 'test_wolf_free_first_v15.py' -v
+      - name: Test true depth configuration and direct TikTok Studio Android behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s tests -p 'test_wolf_tiktok_depth_v16.py' -v
+      - name: Test local private TikTok Studio uploader without account/network
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s tests -p 'test_wolf_tiktok_studio_v16.py' -v
       - name: Verify REAL WOLF workspace backup encryption on JVM
         shell: bash
         run: |
