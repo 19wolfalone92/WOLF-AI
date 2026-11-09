@@ -204,6 +204,7 @@ public final class HomeActivity extends Activity {
                         "📱 Что WOLF может делать на телефоне",
                         "📅 Пакетные публикации Metricool",
                         "🖱 Управление другими приложениями",
+                        "☁️ Подключить сильную модель Hugging Face",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
@@ -215,8 +216,9 @@ public final class HomeActivity extends Activity {
                         case 4: showPhoneCapabilities(); break;
                         case 5: openBatchPublisher(); break;
                         case 6: handleAssistive("управление приложениями"); break;
-                        case 7: exportAnswer(); break;
-                        case 8: confirmClearChat(); break;
+                        case 7: openCloudBrainSettings(); break;
+                        case 8: exportAnswer(); break;
+                        case 9: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -446,6 +448,9 @@ public final class HomeActivity extends Activity {
             case RESEARCH:
                 confirmResearch(command);
                 break;
+            case CLOUD_AI:
+                confirmCloudBrain(command);
+                break;
             case CLOUD_BROWSER:
                 confirmCloudBrowser(command);
                 break;
@@ -537,6 +542,53 @@ public final class HomeActivity extends Activity {
                 .setNegativeButton("Отмена", (d,w) -> reply("Исследование отменено."))
                 .setPositiveButton("Исследовать", (d,w) ->
                         background(() -> ResearchReport.run(getApplicationContext(), subject)))
+                .show();
+    }
+
+    private void openCloudBrainSettings() {
+        startActivity(new Intent(this, CloudBrainSettingsActivity.class));
+    }
+
+    private void confirmCloudBrain(String command) {
+        String lower = command.toLowerCase(Locale.ROOT);
+        if (lower.equals("настрой облачный ии") ||
+                lower.equals("подключи облачный ии")) {
+            openCloudBrainSettings();
+            reply("Настройки облачного ИИ открыты. По умолчанию WOLF по-прежнему " +
+                    "обрабатывает обычные вопросы локально.");
+            return;
+        }
+        String question = command.trim().replaceFirst(
+                "(?iu)^\\s*(?:спроси облачный ии|облачный ии:|план облачного ии:)\\s*[:—-]?\\s*", "");
+        try { question = CloudBrainPolicy.question(question); }
+        catch(Exception error) { reply("Облачный запрос отклонён: " + error.getMessage()); return; }
+        final CloudBrainStore vault = new CloudBrainStore(this);
+        if (!vault.configured()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Подключить Hugging Face?")
+                    .setMessage("Без отдельного Hugging Face токена " +
+                            "отправка вопроса в облако невозможна. " +
+                            "Все обычные запросы продолжают работать локально.")
+                    .setNegativeButton("Отмена",null)
+                    .setPositiveButton("Настроить",(d,w)->openCloudBrainSettings())
+                    .show();
+            return;
+        }
+        final String approvedQuestion = question;
+        new AlertDialog.Builder(this)
+                .setTitle("Отправить один вопрос в Hugging Face?")
+                .setMessage("Модель: " + vault.model() +
+                        "\\n\\nТЕКСТ, КОТОРЫЙ УЙДЁТ В ОБЛАКО:\\n" +
+                        approvedQuestion +
+                        "\\n\\nИстория чата, документы, память, файлы и " +
+                        "GitHub-токен НЕ передаются. Ответ будет только текстом; " +
+                        "не выполнит никаких внешних действий. " +
+                        "Бесплатные кредиты HF ограничены, возможны " +
+                        "действующие платные тарифы. Никаких авто-повторов.")
+                .setNegativeButton("Отмена",(d,w)->reply("Запрос в облако отменён."))
+                .setPositiveButton("Разрешаю один запрос",(d,w)->
+                        background(()->HfBrainClient.ask(getApplicationContext(),
+                                approvedQuestion)))
                 .show();
     }
 
