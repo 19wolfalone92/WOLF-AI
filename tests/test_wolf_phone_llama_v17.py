@@ -79,10 +79,10 @@ class SamsungMobileQwen35Contracts(unittest.TestCase):
     def test_truthful_docs_release(self):
         d=Path("docs/WOLF_17_PHONE_LLAMA_VIDEO_RU.md").read_text("utf-8")
         self.assertIn("Mozilla",d)
-        self.assertIn("не ChatGPT",d.lower() if "не ChatGPT" in d else d)
+        self.assertIn("не ChatGPT",d)
         self.assertIn("Windows",d)
         self.assertIn("Android",d)
-        self.assertIn("не измеряли",d.lower())
+        self.assertIn("не замеряли",d.lower())
         gradle=Path("android/app/build.gradle").read_text("utf-8")
         self.assertIn("versionName '17.0.0'",gradle)
         self.assertIn("versionCode 26",gradle)
