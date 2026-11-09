@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/19wolfalone92/WOLF-AI/blob/main/contracts/agent_dispatch_v1.json",
+  "title": "WOLF approved GitHub agent task v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project",
+    "mode",
+    "client_task_id"
+  ],
+  "properties": {
+    "project": {
+      "type": "string",
+      "enum": [
+        "wolf",
+        "studio",
+        "shaira",
+        "williams",
+        "williams-ai",
+        "english-child"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "audit",
+        "test"
+      ]
+    },
+    "client_task_id": {
+      "type": "string",
+      "pattern": "^(manual|w[a-f0-9]{32})$"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 600
+    },
+    "safe_fix": {
+      "type": "boolean"
+    }
+  }
+}
