@@ -55,7 +55,7 @@ class FreeFirstContracts(unittest.TestCase):
         self.assertIn('DocumentAssistant.ask(',agent)
         self.assertEqual(agent.count('EmbeddedAi.ask('),3)
         self.assertIn('Самопроверка (не независимая экспертиза)',agent)
-        self.assertIn('callback.stage("1/3',agent)
+        self.assertIn('callback.stage("1/"+stages',agent)
         self.assertIn('callback.stage("3/"+stages',agent)
         self.assertNotIn('WebSearchService',agent)
         self.assertNotIn('HttpsURLConnection',agent)
