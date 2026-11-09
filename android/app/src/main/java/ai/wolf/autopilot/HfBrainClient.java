@@ -61,6 +61,7 @@ public final class HfBrainClient {
     }
 
     public static String ask(Context app, String question) throws Exception {
+        CostGuard.requireExternalInferenceEnabled(app);
         String prompt=CloudBrainPolicy.question(question);
         CloudBrainStore vault=new CloudBrainStore(app);
         if (!vault.configured())
