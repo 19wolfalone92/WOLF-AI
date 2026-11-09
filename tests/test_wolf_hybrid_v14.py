@@ -96,7 +96,7 @@ class HybridReleaseContracts(unittest.TestCase):
         self.assertIn("versionName '17.2.0'",version)
         workflow=Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn("WolfHybridBrainTest.java",workflow)
-        self.assertIn("test_wolf_private_browser.py",workflow)
+        self.assertIn("unittest discover -s tests -p 'test_wolf*.py'",workflow)
 
 
 if __name__=="__main__":
