@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Deterministic and auditable natural-language routing; no untrusted shell. */
 public final class WolfCommandRouter {
     public enum Kind {
-        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
+        CHAT, WEB_SEARCH, OPEN_URL, READ_URL, RESEARCH, AUTONOMOUS_RESEARCH, DEEP_LOCAL, OFFLINE_MODEL, FREE_ONLY, CLOUD_AI, CLOUD_BROWSER, UI_AUTOMATION, DEVICE, PROJECT_TASK, TOOLS, HELP
     }
     public static final class Decision {
         public final Kind kind;
@@ -27,6 +27,30 @@ public final class WolfCommandRouter {
             return new Decision(Kind.CHAT, "", "Напиши вопрос.");
         String text = raw.trim();
         String q = text.toLowerCase(Locale.ROOT);
+        if (q.equals("включи бесплатный режим") ||
+                q.equals("только бесплатный режим") ||
+                q.equals("используй только бесплатные модели") ||
+                q.equals("статус бюджета") ||
+                q.equals("режим 0 рублей"))
+            return new Decision(Kind.FREE_ONLY,text,
+                    "Режим 0 ₽: блокировка облачных API и контроль расходов.");
+        if (q.equals("улучши локальную модель") ||
+                q.equals("бесплатные модели") ||
+                q.equals("каталог моделей") ||
+                q.equals("скачай qwen3") ||
+                q.startsWith("скачай qwen3 ") ||
+                q.equals("модели на телефон") ||
+                q.equals("подключи локальную qwen3"))
+            return new Decision(Kind.OFFLINE_MODEL,text,
+                    "Скачать локальную Qwen3 по Wi-Fi без подписки.");
+        if (q.startsWith("подумай глубже") ||
+                q.startsWith("реши подробно") ||
+                q.startsWith("режим эксперта") ||
+                q.startsWith("разбери по шагам") ||
+                q.startsWith("проверь своё решение") ||
+                q.startsWith("проверь свое решение"))
+            return new Decision(Kind.DEEP_LOCAL,text,
+                    "Три реальных локальных этапа: план, ответ, критическая проверка.");
         if (contains(q, "что ты умеешь", "твои возможности", "инструкция",
                 "как пользоваться", "помощь", "/help", "расскажи о себе"))
             return new Decision(Kind.HELP, "", "Показать возможности и ограничения.");
