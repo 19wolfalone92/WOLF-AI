@@ -68,8 +68,8 @@ class FreeFirstContracts(unittest.TestCase):
         self.assertIn('.contains("qwen3")',model)
         self.assertIn('ModelVault.active(app)',model)
         text=Path("android/app/build.gradle").read_text("utf-8")
-        self.assertIn("versionName '16.1.0'",text)
-        self.assertIn('versionCode 25',text)
+        self.assertIn("versionName '17.0.0'",text)
+        self.assertIn('versionCode 26',text)
         workflow=Path(".github/workflows/wolf-ai-android.yml").read_text("utf-8")
         self.assertIn('WolfFreeFirstTest.java',workflow)
 
