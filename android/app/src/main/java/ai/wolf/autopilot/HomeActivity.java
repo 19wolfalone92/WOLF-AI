@@ -205,6 +205,8 @@ public final class HomeActivity extends Activity {
                         "📅 Пакетные публикации Metricool",
                         "🖱 Управление другими приложениями",
                         "☁️ Подключить сильную модель Hugging Face",
+                        "🧠 Бесплатные локальные модели Qwen3 1.7B/4B",
+                        "🛡 Включить режим 0 ₽",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
@@ -217,8 +219,10 @@ public final class HomeActivity extends Activity {
                         case 5: openBatchPublisher(); break;
                         case 6: handleAssistive("управление приложениями"); break;
                         case 7: openCloudBrainSettings(); break;
-                        case 8: exportAnswer(); break;
-                        case 9: confirmClearChat(); break;
+                        case 8: openOfflineModelCatalog(); break;
+                        case 9: enableFreeOnly(); break;
+                        case 10: exportAnswer(); break;
+                        case 11: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -451,6 +455,24 @@ public final class HomeActivity extends Activity {
             case AUTONOMOUS_RESEARCH:
                 confirmAutonomousResearch(command);
                 break;
+            case DEEP_LOCAL:
+                runDeepLocal(command);
+                break;
+            case OFFLINE_MODEL:
+                openOfflineModelCatalog();
+                reply("Открыл каталог бесплатных офлайн-моделей. " +
+                        "Сначала рекомендую Qwen3 1.7B.");
+                break;
+            case FREE_ONLY:
+                if (command.toLowerCase(Locale.ROOT).contains("статус")) {
+                    reply("💰 Режим расходов WOLF: " +
+                            (CostGuard.freeOnly(this) ?
+                                    "0 ₽ (облачные LLM API заблокированы)." :
+                                    "облачные запросы разрешены владельцем.") +
+                            "\nЛокальная Qwen работает бесплатно. " +
+                            "Лимиты GitHub Actions и интернет-трафик остаются.");
+                } else enableFreeOnly();
+                break;
             case CLOUD_AI:
                 confirmCloudBrain(command);
                 break;
@@ -581,6 +603,32 @@ public final class HomeActivity extends Activity {
                 .show();
     }
 
+    private void enableFreeOnly() {
+        try {
+            CostGuard.setFreeOnly(this,true);
+            reply("🛡 Включён режим 0 ₽. Все платёжно-зависимые " +
+                    "LLM-запросы Hugging Face заблокированы. " +
+                    "Локальная Qwen, импортированные бесплатные GGUF " +
+                    "и публичный исследовательский агент работают как прежде. " +
+                    "Внешние сервисы могут иметь собственные лимиты.");
+        } catch(Exception error) {
+            reply("Не удалось включить режим 0 ₽: "+error.getMessage());
+        }
+    }
+
+    private void openOfflineModelCatalog() {
+        startActivity(new Intent(this,ModelCatalogActivity.class));
+    }
+
+    private void runDeepLocal(String command) {
+        background(()->OfflineThinker.run(getApplicationContext(),
+                command,documents,learning,chat.recent(8),stage->
+                        runOnUiThread(()->{
+                            if(!isFinishing()&&!isDestroyed())
+                                subtitle.setText("🧠 "+stage);
+                        })));
+    }
+
     private void openCloudBrainSettings() {
         startActivity(new Intent(this, CloudBrainSettingsActivity.class));
     }
@@ -598,6 +646,19 @@ public final class HomeActivity extends Activity {
                 "(?iu)^\\s*(?:спроси облачный ии|облачный ии:|план облачного ии:)\\s*[:—-]?\\s*", "");
         try { question = CloudBrainPolicy.question(question); }
         catch(Exception error) { reply("Облачный запрос отклонён: " + error.getMessage()); return; }
+        if(CostGuard.freeOnly(this)) {
+            new AlertDialog.Builder(this)
+                    .setTitle("🛡 Режим 0 ₽ защищает от облачных расходов")
+                    .setMessage("Сейчас WOLF не отправит этот вопрос " +
+                            "в Hugging Face, даже если токен сохранён. " +
+                            "Для работы без платежей попробуй команду " +
+                            "«Подумай глубже: ...» или скачай " +
+                            "бесплатную Qwen3 1.7B.")
+                    .setNegativeButton("Оставить бесплатно",null)
+                    .setPositiveButton("Каталог локальных моделей",
+                            (d,w)->openOfflineModelCatalog()).show();
+            return;
+        }
         final CloudBrainStore vault = new CloudBrainStore(this);
         if (!vault.configured()) {
             new AlertDialog.Builder(this)
