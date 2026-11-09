@@ -207,6 +207,8 @@ public final class HomeActivity extends Activity {
                         "☁️ Подключить сильную модель Hugging Face",
                         "🧠 Бесплатные локальные модели Qwen3 1.7B/4B",
                         "🛡 Включить режим 0 ₽",
+                        "🧠 Настроить глубину ответов WOLF",
+                        "🎬 TikTok Studio · без Metricool",
                         "💾 Сохранить последний ответ в файл",
                         "🗑 Очистить историю переписки"
                 }, (dialog, which) -> {
@@ -221,8 +223,10 @@ public final class HomeActivity extends Activity {
                         case 7: openCloudBrainSettings(); break;
                         case 8: openOfflineModelCatalog(); break;
                         case 9: enableFreeOnly(); break;
-                        case 10: exportAnswer(); break;
-                        case 11: confirmClearChat(); break;
+                        case 10: openDepthSettings(); break;
+                        case 11: openTikTokStudio(); break;
+                        case 12: exportAnswer(); break;
+                        case 13: confirmClearChat(); break;
                     }
                 }).show());
 
@@ -458,6 +462,15 @@ public final class HomeActivity extends Activity {
             case DEEP_LOCAL:
                 runDeepLocal(command);
                 break;
+            case DEPTH_SETTINGS:
+                setDepthByCommand(command);
+                break;
+            case TIKTOK_STUDIO:
+                openTikTokStudio();
+                reply("🎬 Открыл прямую загрузку MP4 в TikTok без Metricool. " +
+                        "Войти и выполнить окончательную публикацию необходимо в TikTok. " +
+                        "Для ПК также есть отдельный приватный Chromium-компаньон.");
+                break;
             case OFFLINE_MODEL:
                 openOfflineModelCatalog();
                 reply("Открыл каталог бесплатных офлайн-моделей. " +
@@ -526,6 +539,7 @@ public final class HomeActivity extends Activity {
             case CHAT:
             default:
                 if (isGitHubQuestion(command)) confirmGitHubRead(command);
+                else if(ThinkingDepth.load(this).automatic)runDeepLocal(command);
                 else background(() -> DocumentAssistant.ask(getApplicationContext(),
                         command, documents, learning, chat.recent(8)).text);
                 break;
@@ -614,6 +628,35 @@ public final class HomeActivity extends Activity {
         } catch(Exception error) {
             reply("Не удалось включить режим 0 ₽: "+error.getMessage());
         }
+    }
+
+    private void openDepthSettings() {
+        startActivity(new Intent(this,DepthSettingsActivity.class));
+    }
+
+    private void openTikTokStudio() {
+        startActivity(new Intent(this,TikTokStudioActivity.class));
+    }
+
+    private void setDepthByCommand(String command) {
+        String q=command.toLowerCase(Locale.ROOT).trim();
+        java.util.regex.Matcher m=java.util.regex.Pattern.compile(
+                "^(?:глубина|режим глубины)\\s+([1-4])$").matcher(q);
+        if(m.matches()){
+            try {
+                int steps=Integer.parseInt(m.group(1));
+                ThinkingDepth.Settings chosen=ThinkingDepth.updateSteps(
+                        ThinkingDepth.load(this),steps);
+                ThinkingDepth.save(this,chosen);
+                reply("✅ Глубина изменена: "+chosen.label()+
+                        "\\nОткрой «Настрой глубину», чтобы изменить " +
+                        "токены и автоматическое применение.");
+            } catch(Exception e) {reply("Настройка не сохранена: "+e.getMessage());}
+            return;
+        }
+        openDepthSettings();
+        reply("Открыл настройки глубины: пресеты, 1–4 прохода, " +
+                "128–768 токенов и переключатель для всех обычных вопросов.");
     }
 
     private void openOfflineModelCatalog() {
