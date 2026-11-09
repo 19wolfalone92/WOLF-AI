@@ -32,7 +32,7 @@ public final class WolfHybridBrainTest {
                 "https://example.org/settings","Поиск","сказка",false);
         yes(preview.contains("location.origin"),"fixed HTTPS origin");
         yes(preview.contains("matches.length!==1"),"one exact field");
-        yes(preview.contains("closest"),"no read from input");
+        yes(!preview.contains("el.value"),"preview never reads existing input value");
         yes(preview.contains("return 'ready:1'"),"preview only");
         yes(!preview.contains("dispatchEvent"),"no preview write");
         String fill=AuthenticatedFormPolicy.script(
